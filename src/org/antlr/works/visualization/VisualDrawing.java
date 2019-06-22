@@ -28,8 +28,13 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-
 package org.antlr.works.visualization;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import javax.swing.SwingUtilities;
 
 import org.antlr.analysis.NFAState;
 import org.antlr.works.ate.syntax.misc.ATEThread;
@@ -39,176 +44,155 @@ import org.antlr.works.utils.Console;
 import org.antlr.works.utils.ErrorListener;
 import org.antlr.works.visualization.graphics.GFactory;
 
-import javax.swing.*;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 public class VisualDrawing extends ATEThread {
+   protected SyntaxDiagramTab syntaxDiagramTab;
+   protected GFactory factory = new GFactory();
+   protected String text;
+   protected ElementRule rule;
+   protected String threadText;
+   protected ElementRule threadRule;
+   protected ElementRule threadLastProcessedRule;
+   protected Map<ElementRule, List> cacheGraphs = new HashMap<ElementRule, List>();
 
-    protected SyntaxDiagramTab syntaxDiagramTab;
+   public VisualDrawing(SyntaxDiagramTab syntaxDiagramTab) {
+      this.syntaxDiagramTab = syntaxDiagramTab;
+      start();
+   }
 
-    protected GFactory factory = new GFactory();
+   @Override
+   public void stop() {
+      super.stop();
+      syntaxDiagramTab = null;
+   }
 
-    protected String text;
-    protected ElementRule rule;
+   public void toggleNFAOptimization() {
+      factory.toggleNFAOptimization();
+      clearCacheGraphs();
+   }
 
-    protected String threadText;
-    protected ElementRule threadRule;
-    protected ElementRule threadLastProcessedRule;
+   public synchronized void setText(String text) {
+      this.text = text;
+      awakeThread(500);
+   }
 
-    protected Map<ElementRule,List> cacheGraphs = new HashMap<ElementRule, List>();
+   public synchronized void setRule(ElementRule rule, boolean immediate) {
+      this.rule = rule;
+      awakeThread(immediate ? 0 : 500);
+   }
 
-    public VisualDrawing(SyntaxDiagramTab syntaxDiagramTab) {
-        this.syntaxDiagramTab = syntaxDiagramTab;
-        start();
-    }
+   public synchronized void clearCacheGraphs() {
+      cacheGraphs.clear();
+   }
 
-    @Override
-    public void stop() {
-        super.stop();
-        syntaxDiagramTab = null;
-    }
+   /**
+    * Tries to refresh the current graph in cache. If the graphs are not in cache, return false.
+    */
+   public synchronized boolean refresh() {
+      final List graphs = cacheGraphs.get(threadLastProcessedRule);
+      if (graphs == null || graphs.isEmpty()) {
+         return false;
+      } else {
+         // Execute the panel creation only on the main thread
+         if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(new Runnable() {
+               @Override
+               public void run() {
+                  refreshVisualPanel(graphs);
+               }
+            });
+         } else {
+            refreshVisualPanel(graphs);
+         }
+         return true;
+      }
+   }
 
-    public void toggleNFAOptimization() {
-        factory.toggleNFAOptimization();
-        clearCacheGraphs();
-    }
+   private void refreshVisualPanel(List graphs) {
+      syntaxDiagramTab.panel.setRule(threadLastProcessedRule);
+      syntaxDiagramTab.panel.setGraphs(graphs);
+      syntaxDiagramTab.panel.update();
+   }
 
-    public synchronized void setText(String text) {
-        this.text = text;
-        awakeThread(500);
-    }
+   public synchronized boolean threadShouldProcess() {
+      return text != null || rule != null;
+   }
 
-    public synchronized void setRule(ElementRule rule, boolean immediate) {
-        this.rule = rule;
-        awakeThread(immediate?0:500);
-    }
+   public synchronized void threadPrepareProcess() {
+      this.threadText = text;
+      this.threadRule = rule;
+      text = null;
+      rule = null;
+   }
 
-    public synchronized void clearCacheGraphs() {
-        cacheGraphs.clear();
-    }
+   private void threadProcessText() {
+      if (threadText == null)
+         return;
+      ErrorListener.getThreadInstance().setPrintToConsole(false);
+      try {
+         syntaxDiagramTab.getEngineGrammar().createGrammars();
+      } catch (Exception e) {
+         // ignore
+      } finally {
+         // Flush all caches in cache because the grammar has changed
+         clearCacheGraphs();
+      }
+   }
 
-    /**
-     * Tries to refresh the current graph in cache. If the graphs are not in cache, return false.
-     */
-    public synchronized boolean refresh() {
-        final List graphs = cacheGraphs.get(threadLastProcessedRule);
-        if(graphs == null || graphs.isEmpty()) {
-            return false;
-        } else {
-            // Execute the panel creation only on the main thread
-            if(!SwingUtilities.isEventDispatchThread()) {
-                SwingUtilities.invokeLater(new Runnable() {
-                    public void run() {
-                        refreshVisualPanel(graphs);
-                    }
-                });
-            } else {
-                refreshVisualPanel(graphs);
-            }
-            return true;
-        }
-    }
-
-    private void refreshVisualPanel(List graphs) {
-        syntaxDiagramTab.panel.setRule(threadLastProcessedRule);
-        syntaxDiagramTab.panel.setGraphs(graphs);
-        syntaxDiagramTab.panel.update();
-    }
-
-    public synchronized boolean threadShouldProcess() {
-        return text != null || rule != null;
-    }
-
-    public synchronized void threadPrepareProcess() {
-        this.threadText = text;
-        this.threadRule = rule;
-
-        text = null;
-        rule = null;
-    }
-
-    private void threadProcessText() {
-        if(threadText == null)
-            return;
-
-        ErrorListener.getThreadInstance().setPrintToConsole(false);
-
-        try {
-            syntaxDiagramTab.getEngineGrammar().createGrammars();
-        } catch (Exception e) {
+   private void threadProcessRule() throws Exception {
+      if (threadRule == null)
+         return;
+      String error = null;
+      ErrorListener.getThreadInstance().setPrintToConsole(false);
+      if (syntaxDiagramTab.getEngineGrammar().hasGrammar()) {
+         NFAState startState = null;
+         try {
+            startState = syntaxDiagramTab.getEngineGrammar().getRuleStartState(threadRule.name);
+         } catch (Exception e) {
             // ignore
-        } finally {
-            // Flush all caches in cache because the grammar has changed
-            clearCacheGraphs();
-        }
-    }
+         }
+         if (startState == null) {
+            error = "Cannot display rule \"" + threadRule + "\" because start state not found";
+         }
+      } else {
+         error = "Cannot display rule \"" + threadRule + "\" because grammar could not be generated";
+      }
+      if (error != null) {
+         syntaxDiagramTab.setPlaceholder(error);
+         // visual.getConsole().println(error, Console.LEVEL_ERROR);
+         return;
+      }
+      // Try to get the optimized graph from cache first. If the grammar didn't change (i.e. user
+      // only moving cursor in the text zone), the speed-up can be important.
+      createGraphsForRule(threadRule);
+      threadLastProcessedRule = threadRule;
+      refresh();
+   }
 
-    private void threadProcessRule() throws Exception {
-        if(threadRule == null)
-            return;
+   protected synchronized void createGraphsForRule(ElementRule rule) throws Exception {
+      List graphs = cacheGraphs.get(rule);
+      if (graphs == null) {
+         factory.setOptimize(!AWPrefs.getDebugDontOptimizeNFA());
+         factory.setConsole(syntaxDiagramTab.getConsole());
+         graphs = factory.buildGraphsForRule(syntaxDiagramTab.getEngineGrammar(), rule.name, rule.errors);
+         if (graphs != null)
+            cacheGraphs.put(rule, graphs);
+      }
+   }
 
-        String error = null;
+   @Override
+   public void threadReportException(Exception e) {
+      syntaxDiagramTab.getConsole().println(e);
+   }
 
-        ErrorListener.getThreadInstance().setPrintToConsole(false);
-
-        if(syntaxDiagramTab.getEngineGrammar().hasGrammar()) {
-            NFAState startState = null;
-            try {
-                startState = syntaxDiagramTab.getEngineGrammar().getRuleStartState(threadRule.name);
-            } catch (Exception e) {
-                // ignore
-            }
-            if(startState == null) {
-                error = "Cannot display rule \"" + threadRule + "\" because start state not found";                
-            }
-        } else {
-            error = "Cannot display rule \""+threadRule+"\" because grammar could not be generated";
-        }
-
-        if(error != null) {
-            syntaxDiagramTab.setPlaceholder(error);
-            //visual.getConsole().println(error, Console.LEVEL_ERROR);
-            return;
-        }
-
-        // Try to get the optimized graph from cache first. If the grammar didn't change (i.e. user
-        // only moving cursor in the text zone), the speed-up can be important.
-        createGraphsForRule(threadRule);
-
-        threadLastProcessedRule = threadRule;
-
-        refresh();
-    }
-
-    protected synchronized void createGraphsForRule(ElementRule rule) throws Exception {
-        List graphs = cacheGraphs.get(rule);
-        if(graphs == null) {
-            factory.setOptimize(!AWPrefs.getDebugDontOptimizeNFA());
-            factory.setConsole(syntaxDiagramTab.getConsole());
-            graphs = factory.buildGraphsForRule(syntaxDiagramTab.getEngineGrammar(), rule.name, rule.errors);
-            if(graphs != null)
-                cacheGraphs.put(rule, graphs);
-        }
-    }
-
-    public void threadReportException(Exception e) {
-        syntaxDiagramTab.getConsole().println(e);
-    }
-
-    public void threadRun() throws Exception {
-        syntaxDiagramTab.getConsole().setMode(Console.MODE_QUIET);
-
-        if(threadShouldProcess()) {
-            threadPrepareProcess();
-
-            // Process any text
-            threadProcessText();
-
-            // Process any rule
-            threadProcessRule();
-        }
-    }
-
+   @Override
+   public void threadRun() throws Exception {
+      syntaxDiagramTab.getConsole().setMode(Console.MODE_QUIET);
+      if (threadShouldProcess()) {
+         threadPrepareProcess();
+         // Process any text
+         threadProcessText();
+         // Process any rule
+         threadProcessRule();
+      }
+   }
 }

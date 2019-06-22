@@ -1,6 +1,9 @@
 package org.antlr.works;
 
-import org.antlr.Tool;
+import java.io.File;
+import java.io.IOException;
+
+import org.antlr.v4.Tool;
 import org.antlr.works.ate.syntax.generic.ATESyntaxEngineDelegate;
 import org.antlr.works.grammar.engine.GrammarEngine;
 import org.antlr.works.grammar.engine.GrammarEngineDelegate;
@@ -11,9 +14,6 @@ import org.antlr.works.visualization.SDGenerator;
 import org.antlr.works.visualization.serializable.SEncoder;
 import org.antlr.works.visualization.serializable.SXMLEncoder;
 import org.antlr.xjlib.foundation.XJUtils;
-
-import java.io.File;
-import java.io.IOException;
 
 /*
 
@@ -45,289 +45,302 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-
 public class Console {
+   private String file;
+   private String outputDirectory;
+   private String outputFile;
+   private boolean verbose;
 
-    private String file;
-    private String outputDirectory;
-    private String outputFile;
-    private boolean verbose;
+   public static void main(String[] args) throws Exception {
+      if (args.length == 0) {
+         printUsage();
+         return;
+      }
+      System.setProperty("java.awt.headless", "true");
+      Console c = new Console();
+      c.process(args);
+   }
 
-    public static void main(String[] args) throws Exception {
-        if(args.length == 0) {
-            printUsage();
-            return;
-        }
+   private static void printUsage() {
+      StringBuilder sb = new StringBuilder();
+      sb.append("Usage: java -cp antlrworks.jar org.antlr.works.Console [args]\n");
+      sb.append(" -f grammarFile : ").append("specify the input grammar file (*.g)\n");
+      sb.append(" -sd format : ").append("specify the format of the syntax diagram output file. For EPS, use 'eps'. For bitmap, use either 'png' or any available extensions\n");
+      sb.append(" -serialize outputFile : ").append("serialize all the syntax diagram of the specified files");
+      sb.append(" -o outputDir : ").append("specify the output directory\n");
+      sb.append(" -verbose : ").append("prints the operations\n");
+      System.out.println(sb.toString());
+   }
 
-        System.setProperty("java.awt.headless", "true");
-        
-        Console c = new Console();
-        c.process(args);
-    }
+   public Console() {
+      ConsoleHelper.setCurrent(new ConsoleConsole());
+   }
 
-    private static void printUsage() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Usage: java -cp antlrworks.jar org.antlr.works.Console [args]\n");
-        sb.append(" -f grammarFile : ").append("specify the input grammar file (*.g)\n");
-        sb.append(" -sd format : ").append("specify the format of the syntax diagram output file. For EPS, use 'eps'. For bitmap, use either 'png' or any available extensions\n");
-        sb.append(" -serialize outputFile : ").append("serialize all the syntax diagram of the specified files");
-        sb.append(" -o outputDir : ").append("specify the output directory\n");
-        sb.append(" -verbose : ").append("prints the operations\n");
-        System.out.println(sb.toString());
-    }
+   private void process(String args[]) throws Exception {
+      readArguments(args);
+      String sdFormat = getArgumentValue(args, "-sd");
+      if (sdFormat != null) {
+         if (verbose)
+            System.out.println("Generating syntax diagram in " + sdFormat);
+         generateSyntaxDiagrams(sdFormat);
+      }
+      if (hasArgument(args, "-serialize")) {
+         if (verbose)
+            System.out.println("Serializing syntax diagram ");
+         serializeSyntaxDiagrams();
+      }
+   }
 
-    public Console() {
-        ConsoleHelper.setCurrent(new ConsoleConsole());
-    }
+   private void readArguments(String args[]) {
+      file = getArgumentValue(args, "-f");
+      if (file == null) {
+         System.err.println("File not specified (-f)");
+         return;
+      }
+      file = new File(file).getAbsolutePath();
+      outputDirectory = getArgumentValue(args, "-o");
+      if (outputDirectory == null && hasArgument(args, "-sd")) {
+         System.err.println("Output directory not specified (-o)");
+         return;
+      }
+      outputFile = getArgumentValue(args, "-serialize");
+      if (outputFile == null && hasArgument(args, "-serialize")) {
+         System.err.println("Output file not specified (-serialize)");
+         return;
+      }
+      String v = getArgumentValue(args, "-verbose");
+      if (v != null) {
+         verbose = true;
+      }
+   }
 
-    private void process(String args[]) throws Exception {
-        readArguments(args);
+   private void generateSyntaxDiagrams(String format) throws Exception {
+      processSyntaxDiagram(new GeneratePSDDelegate(format));
+   }
 
-        String sdFormat = getArgumentValue(args, "-sd");
-        if(sdFormat != null) {
-            if(verbose) System.out.println("Generating syntax diagram in "+sdFormat);
-            generateSyntaxDiagrams(sdFormat);
-        }
-        if(hasArgument(args, "-serialize")) {
-            if(verbose) System.out.println("Serializing syntax diagram ");
-            serializeSyntaxDiagrams();
-        }
-    }
+   private void serializeSyntaxDiagrams() throws Exception {
+      processSyntaxDiagram(new SerializePSDDelegate());
+   }
 
-    private void readArguments(String args[]) {
-        file = getArgumentValue(args, "-f");
-        if(file == null) {
-            System.err.println("File not specified (-f)");
-            return;
-        }
-        file = new File(file).getAbsolutePath();
+   private void processSyntaxDiagram(ProcessSyntaxDiagramDelegate delegate) throws Exception {
+      GrammarEngine engine = new GrammarEngineImpl(new EngineDelegate());
+      GrammarSyntaxEngine syntaxEngine = engine.getSyntaxEngine();
+      syntaxEngine.setDelegate(new SyntaxDelegate());
+      syntaxEngine.processSyntax();
+      engine.parserCompleted();
+      SDGenerator gen = new SDGenerator(engine);
+      delegate.beginProcess();
+      for (String name : engine.getRuleNames()) {
+         delegate.processRule(name, gen);
+      }
+      delegate.endProcess();
+   }
 
-        outputDirectory = getArgumentValue(args, "-o");
-        if(outputDirectory == null && hasArgument(args, "-sd")) {
-            System.err.println("Output directory not specified (-o)");
-            return;
-        }
+   private interface ProcessSyntaxDiagramDelegate {
+      void beginProcess();
 
-        outputFile = getArgumentValue(args, "-serialize");
-        if(outputFile == null && hasArgument(args, "-serialize")) {
-            System.err.println("Output file not specified (-serialize)");
-            return;
-        }
-        String v = getArgumentValue(args, "-verbose");
-        if(v != null) {
-            verbose = true;
-        }
-    }
+      void endProcess() throws Exception;
 
-    private void generateSyntaxDiagrams(String format) throws Exception {
-        processSyntaxDiagram(new GeneratePSDDelegate(format));
-    }
+      void processRule(String name, SDGenerator gen) throws Exception;
+   }
 
-    private void serializeSyntaxDiagrams() throws Exception {
-        processSyntaxDiagram(new SerializePSDDelegate());
-    }
+   private class GeneratePSDDelegate implements ProcessSyntaxDiagramDelegate {
+      private String format;
 
-    private void processSyntaxDiagram(ProcessSyntaxDiagramDelegate delegate) throws Exception {
-        GrammarEngine engine = new GrammarEngineImpl(new EngineDelegate());
-        GrammarSyntaxEngine syntaxEngine = engine.getSyntaxEngine();
+      public GeneratePSDDelegate(String format) {
+         this.format = format;
+      }
 
-        syntaxEngine.setDelegate(new SyntaxDelegate());
-        syntaxEngine.processSyntax();
+      @Override
+      public void beginProcess() {
+         if (verbose)
+            System.out.println("Begin");
+         new File(outputDirectory).mkdirs();
+      }
 
-        engine.parserCompleted();
-        
-        SDGenerator gen = new SDGenerator(engine);
+      @Override
+      public void endProcess() throws IOException {
+         if (verbose)
+            System.out.println("Done");
+      }
 
-        delegate.beginProcess();
-        for(String name : engine.getRuleNames()) {
-            delegate.processRule(name, gen);
-        }
-        delegate.endProcess();
-    }
+      @Override
+      public void processRule(String name, SDGenerator gen) throws Exception {
+         if (verbose)
+            System.out.println("Generate rule " + name);
+         String file = XJUtils.concatPath(outputDirectory, name + "." + format);
+         if (format.equals("eps")) {
+            gen.renderRuleToEPSFile(name, file);
+         } else {
+            gen.renderRuleToBitmapFile(name, format, file);
+         }
+      }
+   }
 
-    private interface ProcessSyntaxDiagramDelegate {
+   private class SerializePSDDelegate implements ProcessSyntaxDiagramDelegate {
+      private StringBuilder content;
 
-        void beginProcess();
-        void endProcess() throws Exception;
+      @Override
+      public void beginProcess() {
+         if (verbose)
+            System.out.println("Begin");
+         new File(XJUtils.getPathByDeletingLastComponent(outputFile)).mkdirs();
+         content = new StringBuilder();
+      }
 
-        void processRule(String name, SDGenerator gen) throws Exception;
+      @Override
+      public void endProcess() throws IOException {
+         XJUtils.writeStringToFile(content.toString(), outputFile);
+         if (verbose)
+            System.out.println("Done");
+      }
 
-    }
+      @Override
+      public void processRule(String name, SDGenerator gen) throws Exception {
+         if (verbose)
+            System.out.println("Generate rule " + name);
+         SEncoder encoder = new SXMLEncoder();
+         gen.serializeRule(name, encoder);
+         content.append("\n\n------").append(name).append("------\n\n");
+         content.append(encoder.toString());
+      }
+   }
 
-    private class GeneratePSDDelegate implements ProcessSyntaxDiagramDelegate {
-
-        private String format;
-
-        public GeneratePSDDelegate(String format) {
-            this.format = format;
-        }
-
-        public void beginProcess() {
-            if(verbose) System.out.println("Begin");
-            new File(outputDirectory).mkdirs();
-        }
-
-        public void endProcess() throws IOException {
-            if(verbose) System.out.println("Done");
-        }
-
-        public void processRule(String name, SDGenerator gen) throws Exception {
-            if(verbose) System.out.println("Generate rule "+name);
-
-            String file = XJUtils.concatPath(outputDirectory, name+"."+format);
-            if(format.equals("eps")) {
-                gen.renderRuleToEPSFile(name, file);
+   private static String getArgumentValue(String[] args, String name) {
+      for (int i = 0; i < args.length; i++) {
+         String a = args[i];
+         if (a.equals(name)) {
+            if (i + 1 < args.length) {
+               return args[i + 1];
             } else {
-                gen.renderRuleToBitmapFile(name, format, file);
+               return a;
             }
-        }
-    }
+         }
+      }
+      return null;
+   }
 
-    private class SerializePSDDelegate implements ProcessSyntaxDiagramDelegate {
+   private static boolean hasArgument(String[] args, String name) {
+      for (String a : args) {
+         if (a.equals(name)) {
+            return true;
+         }
+      }
+      return false;
+   }
 
-        private StringBuilder content;
+   private String getGrammarText() {
+      try {
+         return XJUtils.getStringFromFile(file);
+      } catch (IOException e) {
+         e.printStackTrace();
+         return null;
+      }
+   }
 
-        public void beginProcess() {
-            if(verbose) System.out.println("Begin");
-            new File(XJUtils.getPathByDeletingLastComponent(outputFile)).mkdirs();
-            content = new StringBuilder();
-        }
+   public class SyntaxDelegate implements ATESyntaxEngineDelegate {
+      @Override
+      public String getText() {
+         return getGrammarText();
+      }
 
-        public void endProcess() throws IOException {
-            XJUtils.writeStringToFile(content.toString(), outputFile);
-            if(verbose) System.out.println("Done");
-        }
+      @Override
+      public void ateEngineBeforeParsing() {
+         // ignored
+      }
 
-        public void processRule(String name, SDGenerator gen) throws Exception {
-            if(verbose) System.out.println("Generate rule "+name);
-            SEncoder encoder = new SXMLEncoder();
-            gen.serializeRule(name, encoder);
-            content.append("\n\n------").append(name).append("------\n\n");
-            content.append(encoder.toString());
-        }
-    }
+      @Override
+      public void ateEngineAfterParsing() {
+         // ignored
+      }
+   }
 
-    private static String getArgumentValue(String[] args, String name) {
-        for (int i = 0; i < args.length; i++) {
-            String a = args[i];
-            if (a.equals(name)) {
-                if(i+1 < args.length) {
-                    return args[i+1];
-                } else {
-                    return a;
-                }
-            }
-        }
-        return null;
-    }
+   private class EngineDelegate implements GrammarEngineDelegate {
+      @Override
+      public void engineAnalyzeCompleted() {
+         // ignored
+      }
 
-    private static boolean hasArgument(String[] args, String name) {
-        for (String a : args) {
-            if (a.equals(name)) {
-                return true;
-            }
-        }
-        return false;
-    }
+      public String getOutputPath() {
+         return XJUtils.concatPath(XJUtils.getPathByDeletingLastComponent(file), "output");
+      }
 
-    private String getGrammarText() {
-        try {
-            return XJUtils.getStringFromFile(file);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return null;
-        }
-    }
+      @Override
+      public Tool getANTLRTool() {
+         Tool t = new Tool();
+         t.setOutputDirectory(getOutputPath());
+         return t;
+      }
 
-    public class SyntaxDelegate implements ATESyntaxEngineDelegate {
+      @Override
+      public String getGrammarFileName() {
+         return XJUtils.getLastPathComponent(file);
+      }
 
+      @Override
+      public String getGrammarText() {
+         return Console.this.getGrammarText();
+      }
 
-        public String getText() {
-            return getGrammarText();
-        }
+      @Override
+      public String getTokenVocabFile(String name) {
+         return null;
+      }
 
-        public void ateEngineBeforeParsing() {
-            // ignored
-        }
+      @Override
+      public void gotoToRule(String grammar, String name) {
+         // ignored
+      }
 
-        public void ateEngineAfterParsing() {
-            // ignored
-        }
-    }
+      @Override
+      public void reportError(Exception e) {
+         e.printStackTrace();
+      }
 
-    private class EngineDelegate implements GrammarEngineDelegate {
-        
-        public void engineAnalyzeCompleted() {
-            // ignored
-        }
+      @Override
+      public void reportError(String error) {
+         System.err.println(error);
+      }
+   }
 
-        public String getOutputPath() {
-            return XJUtils.concatPath(XJUtils.getPathByDeletingLastComponent(file), "output");
-        }
+   private class ConsoleConsole implements org.antlr.works.utils.Console {
+      @Override
+      public void setMode(int mode) {
+         // ignore
+      }
 
-        public Tool getANTLRTool() {
-            Tool t = new Tool();
-            t.setOutputDirectory(getOutputPath());
-            return t;
-        }
+      @Override
+      public void println(String s) {
+         if (verbose)
+            System.out.println(s);
+      }
 
-        public String getGrammarFileName() {
-            return XJUtils.getLastPathComponent(file);
-        }
+      @Override
+      public void println(String s, int level) {
+         if (level != org.antlr.works.utils.Console.LEVEL_NORMAL) {
+            System.err.println(s);
+         } else if (verbose) {
+            println(s);
+         }
+      }
 
-        public String getGrammarText() {
-            return Console.this.getGrammarText();
-        }
+      @Override
+      public void println(Throwable e) {
+         e.printStackTrace();
+      }
 
-        public String getTokenVocabFile(String name) {
-            return null;
-        }
+      @Override
+      public void print(String string, int level) {
+         if (level != org.antlr.works.utils.Console.LEVEL_NORMAL) {
+            System.err.print(string);
+         } else if (verbose) {
+            System.out.print(string);
+         }
+      }
 
-        public void gotoToRule(String grammar, String name) {
-            // ignored
-        }
-
-        public void reportError(Exception e) {
-            e.printStackTrace();
-        }
-
-        public void reportError(String error) {
-            System.err.println(error);
-        }
-    }
-
-    private class ConsoleConsole implements org.antlr.works.utils.Console {
-
-        public void setMode(int mode) {
-            // ignore
-        }
-
-        public void println(String s) {
-            if(verbose) System.out.println(s);
-        }
-
-        public void println(String s, int level) {
-            if(level != org.antlr.works.utils.Console.LEVEL_NORMAL) {
-                System.err.println(s);
-            } else if(verbose) {
-                println(s);
-            }
-        }
-
-        public void println(Throwable e) {
-            e.printStackTrace();
-        }
-
-        public void print(String string, int level) {
-            if(level != org.antlr.works.utils.Console.LEVEL_NORMAL) {
-                System.err.print(string);
-            } else if(verbose) {
-                System.out.print(string);
-            }
-        }
-
-        public void print(Throwable e) {
-            e.printStackTrace();
-        }
-    }
+      @Override
+      public void print(Throwable e) {
+         e.printStackTrace();
+      }
+   }
 }

@@ -1,6 +1,6 @@
 package org.antlr.works.test.ut;
 
-import org.antlr.Tool;
+import org.antlr.v4.Tool;
 import org.antlr.works.grammar.engine.GrammarEngineDelegate;
 
 /*
@@ -34,36 +34,43 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
 public class MockGrammarEngineDelegate implements GrammarEngineDelegate {
+   @Override
+   public String getGrammarFileName() {
+      return null; // To change body of implemented methods use File | Settings | File Templates.
+   }
 
-    public String getGrammarFileName() {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
-    }
+   @Override
+   public String getGrammarText() {
+      return null; // To change body of implemented methods use File | Settings | File Templates.
+   }
 
-    public String getGrammarText() {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
-    }
+   @Override
+   public String getTokenVocabFile(String name) {
+      return null; // To change body of implemented methods use File | Settings | File Templates.
+   }
 
-    public String getTokenVocabFile(String name) {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
-    }
+   @Override
+   public Tool getANTLRTool() {
+      return null; // To change body of implemented methods use File | Settings | File Templates.
+   }
 
-    public Tool getANTLRTool() {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
-    }
+   @Override
+   public void reportError(String error) {
+      // To change body of implemented methods use File | Settings | File Templates.
+   }
 
-    public void reportError(String error) {
-        //To change body of implemented methods use File | Settings | File Templates.
-    }
+   @Override
+   public void reportError(Exception e) {
+      // To change body of implemented methods use File | Settings | File Templates.
+   }
 
-    public void reportError(Exception e) {
-        //To change body of implemented methods use File | Settings | File Templates.
-    }
+   @Override
+   public void gotoToRule(String grammar, String name) {
+      // To change body of implemented methods use File | Settings | File Templates.
+   }
 
-    public void gotoToRule(String grammar, String name) {
-        //To change body of implemented methods use File | Settings | File Templates.
-    }
-
-    public void engineAnalyzeCompleted() {
-        //To change body of implemented methods use File | Settings | File Templates.
-    }
+   @Override
+   public void engineAnalyzeCompleted() {
+      // To change body of implemented methods use File | Settings | File Templates.
+   }
 }

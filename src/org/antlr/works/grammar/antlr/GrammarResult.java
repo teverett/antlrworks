@@ -1,9 +1,9 @@
 package org.antlr.works.grammar.antlr;
 
-import org.antlr.tool.Message;
-
 import java.util.LinkedList;
 import java.util.List;
+
+import org.antlr.tool.Message;
 
 /*
 
@@ -35,80 +35,78 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-
 public class GrammarResult {
+   public Exception e;
+   public final List<Message> errors = new LinkedList<Message>();
+   public final List<Message> warnings = new LinkedList<Message>();
 
-    public Exception e;
-    public final List<Message> errors = new LinkedList<Message>();
-    public final List<Message> warnings = new LinkedList<Message>();
+   public GrammarResult(Exception e) {
+      this.e = e;
+   }
 
-    public GrammarResult(Exception e) {
-        this.e = e;
-    }
+   public GrammarResult() {
+   }
 
-    public GrammarResult() {
-    }
+   public List<Message> getErrors() {
+      return errors;
+   }
 
-    public List<Message> getErrors() {
-        return errors;
-    }
+   public void setErrors(List<Message> errors) {
+      this.errors.clear();
+      if (errors != null) {
+         this.errors.addAll(errors);
+      }
+   }
 
-    public void setErrors(List<Message> errors) {
-        this.errors.clear();
-        if(errors != null) {
-            this.errors.addAll(errors);
-        }
-    }
+   public String getFirstErrorMessage() {
+      if (getErrorCount() > 0) {
+         return errors.get(0).toString();
+      } else {
+         return null;
+      }
+   }
 
-    public String getFirstErrorMessage() {
-        if(getErrorCount() > 0) {
-            return errors.get(0).toString();
-        } else {
-            return null;
-        }
-    }
+   public List<Message> getWarnings() {
+      return warnings;
+   }
 
-    public List<Message> getWarnings() {
-        return warnings;
-    }
+   public void setWarnings(List<Message> warnings) {
+      this.warnings.clear();
+      if (warnings != null) {
+         this.warnings.addAll(warnings);
+      }
+   }
 
-    public void setWarnings(List<Message> warnings) {
-        this.warnings.clear();
-        if(warnings != null) {
-            this.warnings.addAll(warnings);
-        }
-    }
+   public String getFirstWarningMessage() {
+      if (getWarningCount() > 0) {
+         return warnings.get(0).toString();
+      } else {
+         return null;
+      }
+   }
 
-    public String getFirstWarningMessage() {
-        if(getWarningCount() > 0) {
-            return warnings.get(0).toString();
-        } else {
-            return null;
-        }
-    }
+   public int getErrorCount() {
+      if (errors == null) {
+         return 0;
+      } else {
+         return errors.size();
+      }
+   }
 
-    public int getErrorCount() {
-        if(errors == null) {
-            return 0;
-        } else {
-            return errors.size();
-        }
-    }
+   public int getWarningCount() {
+      if (warnings == null) {
+         return 0;
+      } else {
+         return warnings.size();
+      }
+   }
 
-    public int getWarningCount() {
-        if(warnings == null) {
-            return 0;
-        } else {
-            return warnings.size();
-        }
-    }
+   public boolean isSuccess() {
+      return getErrorCount() == 0 && getWarningCount() == 0 && e == null;
+   }
 
-    public boolean isSuccess() {
-        return getErrorCount() == 0 && getWarningCount() == 0 && e == null;
-    }
-
-    public void clear() {
-        errors.clear();
-        warnings.clear();
-    }
+   public void clear() {
+      errors.clear();
+      warnings.clear();
+   }
 }

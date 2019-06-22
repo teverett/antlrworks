@@ -28,11 +28,22 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-
 package org.antlr.works;
 
-import org.antlr.Tool;
-import org.antlr.tool.ErrorManager;
+import java.awt.Container;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.ResourceBundle;
+
+import javax.swing.SwingUtilities;
+
+import org.antlr.v4.Tool;
+import org.antlr.v4.tool.ErrorManager;
 import org.antlr.works.components.GrammarDocument;
 import org.antlr.works.components.GrammarDocumentFactory;
 import org.antlr.works.components.GrammarWindow;
@@ -47,7 +58,10 @@ import org.antlr.works.stats.StatisticsAW;
 import org.antlr.works.stringtemplate.STDocumentFactory;
 import org.antlr.works.stringtemplate.STWindow;
 import org.antlr.works.utils.Console;
-import org.antlr.works.utils.*;
+import org.antlr.works.utils.ErrorListener;
+import org.antlr.works.utils.HelpManager;
+import org.antlr.works.utils.IconManager;
+import org.antlr.works.utils.Localizable;
 import org.antlr.xjlib.appkit.app.XJApplication;
 import org.antlr.xjlib.appkit.app.XJApplicationDelegate;
 import org.antlr.xjlib.appkit.document.XJDocument;
@@ -63,419 +77,398 @@ import org.antlr.xjlib.appkit.utils.BrowserLauncher;
 import org.antlr.xjlib.appkit.utils.XJAlert;
 import org.antlr.xjlib.foundation.XJSystem;
 
-import javax.swing.*;
-import java.awt.*;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.PrintStream;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.ResourceBundle;
-
 public class IDE extends XJApplicationDelegate implements XJMenuItemDelegate {
+   public static final String PROPERTIES_PATH = "properties/";
+   public static SplashScreen sc;
+   public static final String VERSION;
+   static {
+      String version = IDE.class.getPackage().getImplementationVersion();
+      VERSION = version != null ? version : "1.x";
+   }
 
-    public static final String PROPERTIES_PATH = "properties/";
+   public static void main(String[] args) {
+      // Needs to specify the Mac OS X property here (starting from Tiger)
+      // before any other line of code (the usual XJApplication won't work
+      // because we are instanciating a SplashScreen before it)
+      XJSystem.setSystemProperties();
+      XJApplication.setPropertiesPath(PROPERTIES_PATH);
+      XJAlert.setDefaultAlertIcon(IconManager.shared().getIconApplication64x64());
+      if (args.length >= 1 && args[0].equals("-stats")) {
+         XJApplication.run(new Statistics(), args, "Statistics");
+      } else {
+         sc = new SplashScreen();
+         try {
+            SwingUtilities.invokeAndWait(new Runnable() {
+               @Override
+               public void run() {
+                  sc.setVisible(true);
+               }
+            });
+         } catch (Exception e) {
+            e.printStackTrace();
+         }
+         XJApplication.run(new IDE(), args);
+      }
+   }
 
-    public static SplashScreen sc;
+   public void closeSplashScreen() {
+      if (sc != null) {
+         sc.setVisible(false);
+         sc.dispose();
+         sc = null;
+      }
+   }
 
-	public static final String VERSION;
-	static {
-		String version = IDE.class.getPackage().getImplementationVersion();
-		VERSION = version != null ? version : "1.x";
-	}
+   @Override
+   public void appDidLaunch(String[] args, List<String> documentsToOpenAtStartup) {
+      AWPrefs.setLookAndFeel(XJLookAndFeel.applyLookAndFeel(AWPrefs.getLookAndFeel()));
+      XJApplication.addDocumentFactory(new GrammarDocumentFactory(GrammarWindow.class));
+      XJApplication.addDocumentFactory(new STDocumentFactory(STWindow.class));
+      XJApplication.addScheduledTimer(new HelpManager(), 1, true);
+      AWPrefsDialog.applyCommonPrefs();
+      registerUser();
+      checkLibraries();
+      checkEnvironment();
+      if (args.length >= 2 && args[0].equals("-f")) {
+         XJApplication.shared().openDocument(args[1]);
+      } else if (documentsToOpenAtStartup != null && documentsToOpenAtStartup.size() > 0) {
+         XJApplication.shared().openDocuments(documentsToOpenAtStartup);
+      } else {
+         switch (AWPrefs.getStartupAction()) {
+            case AWPrefs.STARTUP_NEW_DOC:
+               closeSplashScreen();
+               XJApplication.shared().newDocument();
+               break;
+            case AWPrefs.STARTUP_OPEN_LAST_OPENED_DOC:
+               if (XJApplication.shared().getWindows().isEmpty()) {
+                  if (!XJApplication.shared().openLastUsedDocument()) {
+                     closeSplashScreen();
+                     XJApplication.shared().newDocument();
+                  }
+               }
+               break;
+            case AWPrefs.STARTUP_OPEN_LAST_SAVED_DOC:
+               if (XJApplication.shared().getWindows().isEmpty()) {
+                  if (!XJApplication.shared().openDocument(AWPrefs.getLastSavedDocument())) {
+                     closeSplashScreen();
+                     XJApplication.shared().newDocument();
+                  }
+               }
+               break;
+            case AWPrefs.STARTUP_OPEN_ALL_OPENED_DOC:
+               closeSplashScreen();
+               if (!restoreAllOpenedDocuments()) {
+                  XJApplication.shared().newDocument();
+               }
+               break;
+         }
+      }
+      closeSplashScreen();
+   }
 
-    public static void main(String[] args) {
-        // Needs to specify the Mac OS X property here (starting from Tiger)
-        // before any other line of code (the usual XJApplication won't work
-        // because we are instanciating a SplashScreen before it)
-        XJSystem.setSystemProperties();
-        XJApplication.setPropertiesPath(PROPERTIES_PATH);
-        XJAlert.setDefaultAlertIcon(IconManager.shared().getIconApplication64x64());
-        
-        if(args.length >= 1 && args[0].equals("-stats")) {
-            XJApplication.run(new Statistics(), args, "Statistics");
-        } else {
-            sc = new SplashScreen();
+   public void registerUser() {
+      if (!AWPrefs.isUserRegistered()) {
+         closeSplashScreen();
+         AWPrefs.setServerID("");
+         new DialogPersonalInfo(null).runModal();
+         AWPrefs.setUserRegistered(true);
+      }
+   }
 
-            try {
-                SwingUtilities.invokeAndWait(new Runnable() {
-                    public void run() {
-                        sc.setVisible(true);
-                    }
-                });
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+   public void checkLibraries() {
+      StringBuilder missing = new StringBuilder();
+      try {
+         Class.forName("org.antlr.Tool");
+      } catch (ClassNotFoundException e) {
+         missing.append("\n- ANTLR 3.x");
+      }
+      try {
+         Class.forName("org.antlr.stringtemplate.StringTemplate");
+      } catch (ClassNotFoundException e) {
+         missing.append("\n- StringTemplate");
+      } catch (NoClassDefFoundError e) {
+         missing.append("\n- StringTemplate");
+      }
+      if (missing.length() > 0) {
+         closeSplashScreen();
+         missing.insert(0, "ANTLRWorks cannot find the following libraries:");
+         missing.append("\nThey are required in order to use all the features of ANTLRWorks.\nDownload them from www.antlr.org and put them in the same directory as ANTLRWorks.");
+         XJAlert.display(null, "Missing Libraries", missing.toString());
+         System.exit(0);
+      }
+   }
 
-            XJApplication.run(new IDE(), args);
-        }
-    }
+   public void checkEnvironment() {
+      // todo give a hint in the message - like "check that no previous version of ANTLR is in your classpath..."
+      // todo message for first-time user to go to tutorial
+      ErrorListener el = ErrorListener.getThreadInstance();
+      CheckStream bos = new CheckStream(System.err);
+      PrintStream ps = new PrintStream(bos);
+      PrintStream os = System.err;
+      System.setErr(ps);
+      try {
+         ErrorManager.setTool(new Tool());
+         ErrorManager.setErrorListener(el);
+      } catch (Throwable e) {
+         XJAlert.display(null, "Fatal Error", "ANTLRWorks will quit now because ANTLR reported an error:\n" + bos.getMessage());
+         System.exit(0);
+      }
+      if (el.hasErrors()) {
+         XJAlert.display(null, "Error", "ANTLRWorks will continue to launch but ANTLR reported an error:\n" + bos.getMessage());
+      }
+      el.clear();
+      System.setErr(os);
+      ps.close();
+      ErrorManager.removeErrorListener();
+   }
 
-    public void closeSplashScreen() {
-        if(sc != null) {
-            sc.setVisible(false);
-            sc.dispose();
-            sc = null;            
-        }
-    }
+   private class CheckStream extends ByteArrayOutputStream {
+      private PrintStream errorStream;
+      private StringBuilder sb = new StringBuilder();
 
-    @Override
-    public void appDidLaunch(String[] args, List<String> documentsToOpenAtStartup) {
-        AWPrefs.setLookAndFeel(XJLookAndFeel.applyLookAndFeel(AWPrefs.getLookAndFeel()));
+      public CheckStream(PrintStream errorStream) {
+         this.errorStream = errorStream;
+      }
 
-        XJApplication.addDocumentFactory(new GrammarDocumentFactory(GrammarWindow.class));
-        XJApplication.addDocumentFactory(new STDocumentFactory(STWindow.class));
+      @Override
+      public synchronized void write(int b) {
+         super.write(b);
+         record();
+      }
 
-        XJApplication.addScheduledTimer(new HelpManager(), 1, true);
+      @Override
+      public synchronized void write(byte b[], int off, int len) {
+         super.write(b, off, len);
+         record();
+      }
 
-        AWPrefsDialog.applyCommonPrefs();
+      @Override
+      public synchronized void writeTo(OutputStream out) throws IOException {
+         super.writeTo(out);
+         record();
+      }
 
-        registerUser();
-        checkLibraries();
-        checkEnvironment();
+      @Override
+      public void write(byte b[]) throws IOException {
+         super.write(b);
+         record();
+      }
 
-        if(args.length >= 2 && args[0].equals("-f")) {
-            XJApplication.shared().openDocument(args[1]);
-        } else if(documentsToOpenAtStartup != null && documentsToOpenAtStartup.size() > 0) {
-            XJApplication.shared().openDocuments(documentsToOpenAtStartup);
-        } else {
-            switch (AWPrefs.getStartupAction()) {
-                case AWPrefs.STARTUP_NEW_DOC:
-                    closeSplashScreen();
-                    XJApplication.shared().newDocument();
-                    break;
+      private void record() {
+         errorStream.println(toString());
+         sb.append(toString());
+         reset();
+      }
 
-                case AWPrefs.STARTUP_OPEN_LAST_OPENED_DOC:
-                    if(XJApplication.shared().getWindows().isEmpty()) {
-                        if(!XJApplication.shared().openLastUsedDocument()) {
-                            closeSplashScreen();
-                            XJApplication.shared().newDocument();
-                        }
-                    }
-                    break;
+      public String getMessage() {
+         return sb.toString();
+      }
+   }
 
-                case AWPrefs.STARTUP_OPEN_LAST_SAVED_DOC:
-                    if(XJApplication.shared().getWindows().isEmpty()) {
-                        if(!XJApplication.shared().openDocument(AWPrefs.getLastSavedDocument())) {
-                            closeSplashScreen();
-                            XJApplication.shared().newDocument();
-                        }
-                    }
-                    break;
-
-                case AWPrefs.STARTUP_OPEN_ALL_OPENED_DOC:
-                    closeSplashScreen();
-                    if(!restoreAllOpenedDocuments()) {
-                        XJApplication.shared().newDocument();
-                    }
-                    break;
-            }
-        }
-
-        closeSplashScreen();
-    }
-
-    public void registerUser() {
-        if(!AWPrefs.isUserRegistered()) {
-            closeSplashScreen();
-            AWPrefs.setServerID("");
-            new DialogPersonalInfo(null).runModal();
-            AWPrefs.setUserRegistered(true);
-        }
-    }
-
-    public void checkLibraries() {
-        StringBuilder missing = new StringBuilder();
-
-        try {
-            Class.forName("org.antlr.Tool");
-        } catch (ClassNotFoundException e) {
-            missing.append("\n- ANTLR 3.x");
-        }
-
-        try {
-            Class.forName("org.antlr.stringtemplate.StringTemplate");
-        } catch (ClassNotFoundException e) {
-            missing.append("\n- StringTemplate");
-        } catch (NoClassDefFoundError e) {
-            missing.append("\n- StringTemplate");
-        }
-
-        if(missing.length()>0) {
-            closeSplashScreen();
-            missing.insert(0, "ANTLRWorks cannot find the following libraries:");
-            missing.append("\nThey are required in order to use all the features of ANTLRWorks.\nDownload them from www.antlr.org and put them in the same directory as ANTLRWorks.");
-            XJAlert.display(null, "Missing Libraries", missing.toString());
-            System.exit(0);
-        }
-    }
-
-    public void checkEnvironment() {
-        // todo give a hint in the message - like "check that no previous version of ANTLR is in your classpath..."
-        // todo message for first-time user to go to tutorial
-        ErrorListener el = ErrorListener.getThreadInstance();
-        CheckStream bos = new CheckStream(System.err);
-        PrintStream ps = new PrintStream(bos);
-        PrintStream os = System.err;
-        System.setErr(ps);
-        try {
-            ErrorManager.setTool(new Tool());
-            ErrorManager.setErrorListener(el);
-        } catch (Throwable e) {
-            XJAlert.display(null, "Fatal Error", "ANTLRWorks will quit now because ANTLR reported an error:\n"+bos.getMessage());
-            System.exit(0);
-        }
-
-        if(el.hasErrors()) {
-            XJAlert.display(null, "Error", "ANTLRWorks will continue to launch but ANTLR reported an error:\n"+bos.getMessage());
-        }
-        el.clear();
-        System.setErr(os);
-        ps.close();
-        ErrorManager.removeErrorListener();
-    }
-
-    private class CheckStream extends ByteArrayOutputStream {
-
-        private PrintStream errorStream;
-        private StringBuilder sb = new StringBuilder();
-
-        public CheckStream(PrintStream errorStream) {
-            this.errorStream = errorStream;
-        }
-
-        public synchronized void write(int b) {
-            super.write(b);
-            record();
-        }
-
-        public synchronized void write(byte b[], int off, int len) {
-            super.write(b, off, len);
-            record();
-        }
-
-        public synchronized void writeTo(OutputStream out) throws IOException {
-            super.writeTo(out);
-            record();
-        }
-
-        public void write(byte b[]) throws IOException {
-            super.write(b);
-            record();
-        }
-
-        private void record() {
-            errorStream.println(toString());
-            sb.append(toString());
-            reset();
-        }
-
-        public String getMessage() {
-            return sb.toString();
-        }
-    }
-
-    public static String getApplicationPath() {
-        Class c = XJApplication.getAppDelegate().getClass();
-        URL url = c.getProtectionDomain().getCodeSource().getLocation();
-        String p;
-        if(url == null) {
-            // url can be null in some situation (i.e. plugin in IntelliJ). Let's try another
-            // way using getResource().
-            // Warning: use only '/' for the resource name even on Windows because internally
-            // Java uses '/'!
-            // See AW-35
-            String name = c.getName().replace('.', '/').concat(".class");
-            url = c.getClassLoader().getResource(name);
-            if(url == null) {
-                System.err.println("IDE: unable to get the location of the XJApplicationDelegate");
-                return null;
-            } else {
-                // Remove the class fully qualified path from the path
-                p = url.getPath();
-                p = p.substring(0, p.length()-name.length());
-            }
-        } else {
+   public static String getApplicationPath() {
+      Class c = XJApplication.getAppDelegate().getClass();
+      URL url = c.getProtectionDomain().getCodeSource().getLocation();
+      String p;
+      if (url == null) {
+         // url can be null in some situation (i.e. plugin in IntelliJ). Let's try another
+         // way using getResource().
+         // Warning: use only '/' for the resource name even on Windows because internally
+         // Java uses '/'!
+         // See AW-35
+         String name = c.getName().replace('.', '/').concat(".class");
+         url = c.getClassLoader().getResource(name);
+         if (url == null) {
+            System.err.println("IDE: unable to get the location of the XJApplicationDelegate");
+            return null;
+         } else {
+            // Remove the class fully qualified path from the path
             p = url.getPath();
-        }
+            p = p.substring(0, p.length() - name.length());
+         }
+      } else {
+         p = url.getPath();
+      }
+      if (p.startsWith("jar:"))
+         p = p.substring("jar:".length());
+      if (p.startsWith("file:"))
+         p = p.substring("file:".length());
+      int index = p.lastIndexOf("!");
+      if (index != -1)
+         p = p.substring(0, index);
+      if (XJSystem.isWindows()) {
+         // Note: on Windows, we can have something like "/C:/Document..."
+         if (p.charAt(0) == '/')
+            p = p.substring(1);
+         // Change all '/' to '\'
+         StringBuilder sb = new StringBuilder(p);
+         for (int i = 0; i < sb.length(); i++) {
+            if (sb.charAt(i) == '/')
+               sb.replace(i, i + 1, "\\");
+         }
+         p = sb.toString();
+      }
+      // Replace all %20 with white space. Apparently inside IntelliJ 6, white space in a path
+      // are replaced by %20 but not in IntelliJ 5
+      p = p.replaceAll("%20", " ");
+      return p;
+   }
 
-        if(p.startsWith("jar:"))
-            p = p.substring("jar:".length());
+   public static void debugVerbose(Console console, Class c, String s) {
+      if (AWPrefs.getDebugVerbose()) {
+         String message = c.getName() + ": " + s;
+         if (console != null)
+            console.println(message);
+         System.out.println(message);
+      }
+   }
 
-        if(p.startsWith("file:"))
-            p = p.substring("file:".length());
+   @Override
+   public void customizeHelpMenu(XJMenu menu) {
+      menu.insertItemAfter(new XJMenuItem("Check for Updates", GrammarWindowMenu.MI_CHECK_UPDATES, this), XJMainMenuBar.MI_HELP);
+      menu.insertItemAfter(new XJMenuItem("Send Feedback", GrammarWindowMenu.MI_SEND_FEEDBACK, this), XJMainMenuBar.MI_HELP);
+      menu.insertItemAfter(new XJMenuItem("Submit Statistics...", GrammarWindowMenu.MI_SUBMIT_STATS, this), XJMainMenuBar.MI_HELP);
+      menu.insertSeparatorAfter(XJMainMenuBar.MI_HELP);
+   }
 
-        int index = p.lastIndexOf("!");
-        if(index != -1)
-            p = p.substring(0, index);
+   @Override
+   public void handleMenuEvent(XJMenu menu, XJMenuItem item) {
+      switch (item.getTag()) {
+         case GrammarWindowMenu.MI_SUBMIT_STATS:
+            submitStats(getDefaultParent());
+            break;
+         case GrammarWindowMenu.MI_SEND_FEEDBACK:
+            submitFeedback(getDefaultParent());
+            break;
+         case GrammarWindowMenu.MI_CHECK_UPDATES:
+            checkUpdates(getDefaultParent());
+            break;
+      }
+   }
 
-        if(XJSystem.isWindows()) {
-            // Note: on Windows, we can have something like "/C:/Document..."
-            if(p.charAt(0) == '/')
-                p = p.substring(1);
+   public Container getDefaultParent() {
+      return XJApplication.shared().getActiveWindow().getJavaContainer();
+   }
 
-            // Change all '/' to '\'
-            StringBuilder sb = new StringBuilder(p);
-            for(int i=0; i<sb.length(); i++) {
-                if(sb.charAt(i) == '/')
-                    sb.replace(i, i+1, "\\");
-            }
-            p = sb.toString();
-        }
+   public static void checkUpdates(Container parent) {
+      StatisticsAW.shared().recordEvent(StatisticsAW.EVENT_CHECK_FOR_UPDATES);
+      HelpManager.checkUpdates(parent, false);
+   }
 
-        // Replace all %20 with white space. Apparently inside IntelliJ 6, white space in a path
-        // are replaced by %20 but not in IntelliJ 5
-        p = p.replaceAll("%20", " ");
+   public static void submitFeedback(Container parent) {
+      HelpManager.sendFeedback(parent);
+   }
 
-        return p;
-    }
+   public static void submitStats(Container parent) {
+      HelpManager.submitStats(parent);
+   }
 
-    public static void debugVerbose(Console console, Class c, String s) {
-        if(AWPrefs.getDebugVerbose()) {
-            String message = c.getName()+": "+s;
-            if(console != null)
-                console.println(message);
-            System.out.println(message);
-        }
-    }
+   public static void showHelp(Container parent) {
+      StatisticsAW.shared().recordEvent(StatisticsAW.EVENT_SHOW_HELP);
+      String url = Localizable.getLocalizedString(Localizable.DOCUMENTATION_URL);
+      try {
+         BrowserLauncher.openURL(url);
+      } catch (IOException e) {
+         XJAlert.display(parent, "Cannot access the online help", "An error occurred when accessing the online help:\n" + e.toString() + "\n\nBrowse the online help at " + url + ".");
+      }
+   }
 
-    public void customizeHelpMenu(XJMenu menu) {
-        menu.insertItemAfter(new XJMenuItem("Check for Updates", GrammarWindowMenu.MI_CHECK_UPDATES, this), XJMainMenuBar.MI_HELP);
-        menu.insertItemAfter(new XJMenuItem("Send Feedback", GrammarWindowMenu.MI_SEND_FEEDBACK, this), XJMainMenuBar.MI_HELP);
-        menu.insertItemAfter(new XJMenuItem("Submit Statistics...", GrammarWindowMenu.MI_SUBMIT_STATS, this), XJMainMenuBar.MI_HELP);
-        menu.insertSeparatorAfter(XJMainMenuBar.MI_HELP);
-    }
+   @Override
+   public void appShowHelp() {
+      showHelp(getDefaultParent());
+   }
 
-    public void handleMenuEvent(XJMenu menu, XJMenuItem item) {
-        switch(item.getTag()) {
-            case GrammarWindowMenu.MI_SUBMIT_STATS:
-                submitStats(getDefaultParent());
-                break;
-            case GrammarWindowMenu.MI_SEND_FEEDBACK:
-                submitFeedback(getDefaultParent());
-                break;
-            case GrammarWindowMenu.MI_CHECK_UPDATES:
-                checkUpdates(getDefaultParent());
-                break;
-        }
-    }
+   @Override
+   public void appWillTerminate() {
+      rememberAllOpenedDocuments();
+      StatisticsAW.shared().close();
+   }
 
-    public Container getDefaultParent() {
-        return XJApplication.shared().getActiveWindow().getJavaContainer();
-    }
+   @Override
+   public Class appPreferencesPanelClass() {
+      return AWPrefsDialog.class;
+   }
 
-    public static void checkUpdates(Container parent) {
-        StatisticsAW.shared().recordEvent(StatisticsAW.EVENT_CHECK_FOR_UPDATES);
-        HelpManager.checkUpdates(parent, false);
-    }
+   @Override
+   public XJPanel appInstanciateAboutPanel() {
+      return new DialogAbout();
+   }
 
-    public static void submitFeedback(Container parent) {
-        HelpManager.sendFeedback(parent);
-    }
+   @Override
+   public boolean appHasPreferencesMenuItem() {
+      return true;
+   }
 
-    public static void submitStats(Container parent) {
-        HelpManager.submitStats(parent);
-    }
+   @Override
+   public boolean appShouldQuitAfterLastWindowClosed() {
+      return false;
+   }
 
-    public static void showHelp(Container parent) {
-        StatisticsAW.shared().recordEvent(StatisticsAW.EVENT_SHOW_HELP);
-        String url = Localizable.getLocalizedString(Localizable.DOCUMENTATION_URL);
-        try {
-            BrowserLauncher.openURL(url);
-        } catch (IOException e) {
-            XJAlert.display(parent, "Cannot access the online help", "An error occurred when accessing the online help:\n"+e.toString()+"\n\nBrowse the online help at "+url+".");
-        }
-    }
+   @Override
+   public boolean useDesktopMode() {
+      return AWPrefs.getUseDesktopMode();
+   }
 
-    public void appShowHelp() {
-        showHelp(getDefaultParent());
-    }
+   @Override
+   public Class appPreferencesClass() {
+      return IDE.class;
+   }
 
-    public void appWillTerminate() {
-        rememberAllOpenedDocuments();
-        StatisticsAW.shared().close();
-    }
+   @Override
+   public String appName() {
+      return Localizable.getLocalizedString(Localizable.APP_NAME) + " " + appVersionShort();
+   }
 
-    public Class appPreferencesPanelClass() {
-        return AWPrefsDialog.class;
-    }
+   @Override
+   public String appVersionShort() {
+      return VERSION;
+   }
 
-    public XJPanel appInstanciateAboutPanel() {
-        return new DialogAbout();
-    }
+   @Override
+   public String appVersionLong() {
+      return VERSION;
+   }
 
-    public boolean appHasPreferencesMenuItem() {
-        return true;
-    }
+   @Override
+   public boolean displayNewDocumentWizard(XJDocument document) {
+      // only display for grammar (*.g) files
+      if (document != null && document instanceof GrammarDocument) {
+         NewWizardDialog dialog = new NewWizardDialog(document.getWindow().getJavaContainer());
+         if (dialog.runModal() == XJDialog.BUTTON_OK) {
+            ((GrammarWindow) document.getWindow()).loadText(dialog.getGeneratedText());
+            return true;
+         }
+      }
+      return false;
+   }
 
-    public boolean appShouldQuitAfterLastWindowClosed() {
-        return false;
-    }
+   private boolean restoreAllOpenedDocuments() {
+      List<String> documents = AWPrefs.getAllOpenedDocuments();
+      if (documents == null)
+         return false;
+      boolean success = false;
+      for (String docPath : documents) {
+         if (XJApplication.shared().openDocument(docPath)) {
+            success = true;
+         }
+      }
+      return success;
+   }
 
-    public boolean useDesktopMode() {
-        return AWPrefs.getUseDesktopMode();
-    }
+   private void rememberAllOpenedDocuments() {
+      final List<String> docPath = new ArrayList<String>();
+      for (XJWindow window : XJApplication.shared().getWindows()) {
+         final XJDocument document = window.getDocument();
+         if (XJApplication.handlesDocument(document)) {
+            docPath.add(document.getDocumentPath());
+         }
+      }
+      AWPrefs.setAllOpenedDocuments(docPath);
+   }
 
-    public Class appPreferencesClass() {
-        return IDE.class;
-    }
+   /** Localized resource bundle */
+   protected static ResourceBundle resourceMenusBundle = ResourceBundle.getBundle("properties.menus");
 
-    public String appName() {
-        return Localizable.getLocalizedString(Localizable.APP_NAME)+" "+appVersionShort();
-    }
-
-    public String appVersionShort() {
-        return VERSION;
-    }
-
-    public String appVersionLong() {
-        return VERSION;
-    }
-
-    public boolean displayNewDocumentWizard(XJDocument document) {
-        // only display for grammar (*.g) files
-        if (document != null && document instanceof GrammarDocument) {
-            NewWizardDialog dialog = new NewWizardDialog(document.getWindow().getJavaContainer());
-
-            if(dialog.runModal() == XJDialog.BUTTON_OK) {
-                ((GrammarWindow)document.getWindow()).loadText(dialog.getGeneratedText());
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean restoreAllOpenedDocuments() {
-        List<String> documents = AWPrefs.getAllOpenedDocuments();
-        if(documents == null) return false;
-
-        boolean success = false;
-        for (String docPath : documents) {
-            if(XJApplication.shared().openDocument(docPath)) {
-                success = true;
-            }
-        }
-        return success;
-    }
-
-    private void rememberAllOpenedDocuments() {
-        final List<String> docPath = new ArrayList<String>();
-        for (XJWindow window : XJApplication.shared().getWindows()) {
-            final XJDocument document = window.getDocument();
-            if(XJApplication.handlesDocument(document)) {
-                docPath.add(document.getDocumentPath());
-            }
-        }
-        AWPrefs.setAllOpenedDocuments(docPath);
-    }
-
-    /** Localized resource bundle */
-    protected static ResourceBundle resourceMenusBundle = ResourceBundle.getBundle("properties.menus");
-
-    public static ResourceBundle getMenusResourceBundle() {
-        return resourceMenusBundle;
-    }
-
+   public static ResourceBundle getMenusResourceBundle() {
+      return resourceMenusBundle;
+   }
 }

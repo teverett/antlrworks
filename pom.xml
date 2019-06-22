@@ -53,8 +53,10 @@
         <bootclasspath.compile>${bootclasspath.java5}</bootclasspath.compile>
         <bootclasspath.testCompile>${bootclasspath.java6}</bootclasspath.testCompile>
         <!-- This property is used for dependencies and for the MANIFEST.MF customization -->
-        <antlr3.version>3.5.1</antlr3.version>
+        <antlr4.version>4.7.2</antlr4.version>
         <aw1.basedir>${basedir}</aw1.basedir>
+        <source.jdk>1.7</source.jdk>
+        <target.jdk>1.9</target.jdk>
     </properties>
 
     <!--
@@ -93,14 +95,14 @@
         </dependency>
         <dependency>
             <groupId>org.antlr</groupId>
-            <artifactId>antlr-runtime</artifactId>
-            <version>${antlr3.version}</version>
+            <artifactId>antlr4-runtime</artifactId>
+            <version>${antlr4.version}</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>org.antlr</groupId>
-            <artifactId>antlr</artifactId>
-            <version>${antlr3.version}</version>
+            <artifactId>antlr4</artifactId>
+            <version>${antlr4.version}</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
@@ -136,8 +138,8 @@
                             <execution>
                                 <id>default-compile</id>
                                 <configuration>
-                                    <source>1.5</source>
-                                    <target>1.5</target>
+                                    <source>${source.jdk}</source>
+                                    <target>${target.jdk}</target>
                                     <compilerArgs>
                                         <arg>-Xlint</arg>
                                         <arg>-Xlint:-serial</arg>
@@ -285,8 +287,8 @@
                             <manifestSection>
                                 <name>org/antlr/</name>
                                 <manifestEntries>
-                                    <Implementation-Title>ANTLR 3</Implementation-Title>
-                                    <Implementation-Version>${antlr3.version}</Implementation-Version>
+                                    <Implementation-Title>ANTLR 4</Implementation-Title>
+                                    <Implementation-Version>${antlr4.version}</Implementation-Version>
                                     <Implementation-Vendor-Id>org.antlr</Implementation-Vendor-Id>
                                 </manifestEntries>
                             </manifestSection>
@@ -321,8 +323,8 @@
                     <execution>
                         <id>default-compile</id>
                         <configuration>
-                            <source>1.5</source>
-                            <target>1.5</target>
+                            <source>${source.jdk}</source>
+                            <target>${target.jdk}</target>
                         </configuration>
                     </execution>
                     <execution>

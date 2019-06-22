@@ -1,12 +1,5 @@
 package org.antlr.works.grammar.engine;
 
-import org.antlr.Tool;
-import org.antlr.works.ate.syntax.misc.ATEToken;
-import org.antlr.works.grammar.antlr.ANTLRGrammarEngine;
-import org.antlr.works.grammar.antlr.GrammarResult;
-import org.antlr.works.grammar.element.*;
-import org.antlr.works.grammar.syntax.GrammarSyntaxEngine;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Set;/*
@@ -39,6 +32,19 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
+
+import org.antlr.v4.Tool;
+import org.antlr.works.ate.syntax.misc.ATEToken;
+import org.antlr.works.grammar.antlr.ANTLRGrammarEngine;
+import org.antlr.works.grammar.antlr.GrammarResult;
+import org.antlr.works.grammar.element.ElementAction;
+import org.antlr.works.grammar.element.ElementBlock;
+import org.antlr.works.grammar.element.ElementGrammarName;
+import org.antlr.works.grammar.element.ElementGroup;
+import org.antlr.works.grammar.element.ElementImport;
+import org.antlr.works.grammar.element.ElementReference;
+import org.antlr.works.grammar.element.ElementRule;
+import org.antlr.works.grammar.syntax.GrammarSyntaxEngine;
 
 public interface GrammarEngine {
 

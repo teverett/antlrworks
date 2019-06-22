@@ -28,125 +28,133 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-
 package org.antlr.works.interpreter;
+
+import java.awt.Color;
+import java.util.Enumeration;
+
+import javax.swing.tree.DefaultTreeModel;
+import javax.swing.tree.MutableTreeNode;
+import javax.swing.tree.TreeNode;
 
 import org.antlr.runtime.CommonToken;
 import org.antlr.runtime.NoViableAltException;
 import org.antlr.runtime.tree.ParseTree;
 import org.antlr.runtime.tree.Tree;
-import org.antlr.tool.Grammar;
+import org.antlr.v4.tool.Grammar;
 import org.antlr.works.utils.awtree.AWTreeNode;
 
-import javax.swing.tree.DefaultTreeModel;
-import javax.swing.tree.MutableTreeNode;
-import javax.swing.tree.TreeNode;
-import java.awt.*;
-import java.util.Enumeration;
-
 public class EditorInterpreterTreeModel extends DefaultTreeModel {
+   protected Grammar grammar;
 
-    protected Grammar grammar;
+   public EditorInterpreterTreeModel() {
+      super(null);
+   }
 
-    public EditorInterpreterTreeModel() {
-        super(null);
-    }
+   public void setGrammar(Grammar grammar) {
+      this.grammar = grammar;
+   }
 
-    public void setGrammar(Grammar grammar) {
-        this.grammar = grammar;
-    }
+   public void setTree(Tree tree) {
+      setRoot(new InterpreterTreeNode(null, tree));
+   }
 
-    public void setTree(Tree tree) {
-        setRoot(new InterpreterTreeNode(null, tree));
-    }
+   public class InterpreterTreeNode extends AWTreeNode {
+      protected Tree tree;
 
-    public class InterpreterTreeNode extends AWTreeNode {
+      public InterpreterTreeNode(TreeNode parent, Tree tree) {
+         this.parent = (MutableTreeNode) parent;
+         this.tree = tree;
+      }
 
-        protected Tree tree;
+      @Override
+      public TreeNode getChildAt(int childIndex) {
+         return new InterpreterTreeNode(this, tree.getChild(childIndex));
+      }
 
-        public InterpreterTreeNode(TreeNode parent, Tree tree) {
-            this.parent = (MutableTreeNode) parent;
-            this.tree = tree;
-        }
+      @Override
+      public int getChildCount() {
+         return tree.getChildCount();
+      }
 
-        public TreeNode getChildAt(int childIndex) {
-            return new InterpreterTreeNode(this, tree.getChild(childIndex));
-        }
+      @Override
+      public TreeNode getParent() {
+         return parent;
+      }
 
-        public int getChildCount() {
-            return tree.getChildCount();
-        }
+      @Override
+      public int getIndex(TreeNode node) {
+         for (int i = 0; i < tree.getChildCount(); i++) {
+            if (tree.getChild(i) == node)
+               return i;
+         }
+         return -1;
+      }
 
-        public TreeNode getParent() {
-            return parent;
-        }
+      @Override
+      public boolean getAllowsChildren() {
+         return true;
+      }
 
-        public int getIndex(TreeNode node) {
-            for(int i=0; i<tree.getChildCount(); i++) {
-                if(tree.getChild(i) == node)
-                    return i;
-            }
-            return -1;
-        }
+      @Override
+      public boolean isLeaf() {
+         return getChildCount() == 0;
+      }
 
-        public boolean getAllowsChildren() {
-            return true;
-        }
+      @Override
+      public Enumeration children() {
+         return null;
+      }
 
-        public boolean isLeaf() {
-            return getChildCount() == 0;
-        }
-
-        public Enumeration children() {
+      public Object getPayload() {
+         if (tree instanceof ParseTree)
+            return ((ParseTree) tree).payload;
+         else
             return null;
-        }
+      }
 
-        public Object getPayload() {
-            if(tree instanceof ParseTree)
-                return ((ParseTree)tree).payload;
+      @Override
+      public Color getColor() {
+         return Color.black;
+      }
+
+      @Override
+      public String getInfoString() {
+         StringBuilder info = new StringBuilder();
+         Object payload = getPayload();
+         if (payload instanceof CommonToken) {
+            CommonToken t = (CommonToken) payload;
+            info.append("Type: ").append(grammar.getTokenDisplayName(t.getType())).append("\n");
+            info.append("Text: ").append(t.getText()).append("\n");
+            info.append("Line: ").append(t.getLine()).append("\n");
+            info.append("Char: ").append(t.getCharPositionInLine()).append("\n");
+            info.append("Channel: ").append(t.getChannel()).append("\n");
+         } else if (payload instanceof NoViableAltException) {
+            NoViableAltException e = (NoViableAltException) payload;
+            info.append("Description: ").append(e.grammarDecisionDescription).append("\n");
+            info.append("Descision: ").append(e.decisionNumber).append("\n");
+            info.append("State: ").append(e.stateNumber).append("\n");
+         } else {
+            if (isLeaf())
+               info.append(payload.toString());
             else
-                return null;
-        }
+               info.append("Rule: ").append(payload.toString());
+         }
+         return info.toString();
+      }
 
-        public Color getColor() {
-            return Color.black;
-        }
-
-        public String getInfoString() {
-            StringBuilder info = new StringBuilder();
-            Object payload = getPayload();
-            if(payload instanceof CommonToken) {
-                CommonToken t = (CommonToken)payload;
-                info.append("Type: ").append(grammar.getTokenDisplayName(t.getType())).append("\n");
-                info.append("Text: ").append(t.getText()).append("\n");
-                info.append("Line: ").append(t.getLine()).append("\n");
-                info.append("Char: ").append(t.getCharPositionInLine()).append("\n");
-                info.append("Channel: ").append(t.getChannel()).append("\n");
-            } else if(payload instanceof NoViableAltException) {
-                NoViableAltException e = (NoViableAltException)payload;
-                info.append("Description: ").append(e.grammarDecisionDescription).append("\n");
-                info.append("Descision: ").append(e.decisionNumber).append("\n");
-                info.append("State: ").append(e.stateNumber).append("\n");
-            } else {
-                if(isLeaf())
-                    info.append(payload.toString());
-                else
-                    info.append("Rule: ").append(payload.toString());
-            }
-            return info.toString();
-        }
-
-        public String toString() {
-            Object payload = getPayload();
-            if(payload instanceof CommonToken) {
-                CommonToken t = (CommonToken)payload;
-                return t.getText();
-            } else if(payload instanceof NoViableAltException)
-                return "NoViableAltException";
-            else if(payload == null)
-                return "<null>";
-            else
-                return payload.toString();
-        }
-    }
+      @Override
+      public String toString() {
+         Object payload = getPayload();
+         if (payload instanceof CommonToken) {
+            CommonToken t = (CommonToken) payload;
+            return t.getText();
+         } else if (payload instanceof NoViableAltException)
+            return "NoViableAltException";
+         else if (payload == null)
+            return "<null>";
+         else
+            return payload.toString();
+      }
+   }
 }

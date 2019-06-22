@@ -1,6 +1,6 @@
 package org.antlr.works.grammar.engine;
 
-import org.antlr.Tool;
+import org.antlr.v4.Tool;
 
 /*
 
@@ -32,21 +32,20 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-
 public interface GrammarEngineDelegate {
+   String getGrammarFileName();
 
-    String getGrammarFileName();
-    String getGrammarText();
+   String getGrammarText();
 
-    String getTokenVocabFile(String name);
+   String getTokenVocabFile(String name);
 
-    Tool getANTLRTool();
+   Tool getANTLRTool();
 
-    void reportError(String error);
-    void reportError(Exception e);
+   void reportError(String error);
 
-    void gotoToRule(String grammar, String name);
+   void reportError(Exception e);
 
-    void engineAnalyzeCompleted();
+   void gotoToRule(String grammar, String name);
 
+   void engineAnalyzeCompleted();
 }

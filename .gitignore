@@ -3,3 +3,8 @@
 # NetBeans user settings
 nbactions.xml
 nb-configuration.xml
+/dist
+/.project
+/.settings
+/.classpath
+/lib

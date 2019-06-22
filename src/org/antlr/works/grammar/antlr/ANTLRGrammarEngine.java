@@ -1,7 +1,7 @@
 package org.antlr.works.grammar.antlr;
 
 import org.antlr.analysis.NFAState;
-import org.antlr.tool.Grammar;
+import org.antlr.v4.tool.Grammar;
 import org.antlr.works.grammar.element.ElementRule;
 import org.antlr.works.grammar.engine.GrammarEngine;/*
 

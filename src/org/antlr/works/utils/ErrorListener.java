@@ -28,108 +28,102 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-
 package org.antlr.works.utils;
-
-import org.antlr.analysis.DecisionProbe;
-import org.antlr.tool.ANTLRErrorListener;
-import org.antlr.tool.Message;
-import org.antlr.tool.ToolMessage;
 
 import java.util.LinkedList;
 import java.util.List;
 
+import org.antlr.analysis.DecisionProbe;
+import org.antlr.tool.Message;
+import org.antlr.v4.runtime.ANTLRErrorListener;
+import org.antlr.v4.tool.ToolMessage;
+
 public class ErrorListener implements ANTLRErrorListener {
+   private static ThreadLocal<ErrorListener> threadLocalListener = new ThreadLocal<ErrorListener>();
+   public List<String> infos = new LinkedList<String>();
+   public List<Message> errors = new LinkedList<Message>();
+   public List<Message> warnings = new LinkedList<Message>();
+   public boolean printToConsole = true;
+   public ErrorListener forwardListener = null;
 
-    private static ThreadLocal<ErrorListener> threadLocalListener = new ThreadLocal<ErrorListener>();
+   public static synchronized ErrorListener getThreadInstance() {
+      if (threadLocalListener.get() == null) {
+         threadLocalListener.set(new ErrorListener());
+      }
+      return threadLocalListener.get();
+   }
 
-    public List<String> infos = new LinkedList<String>();
-    public List<Message> errors = new LinkedList<Message>();
-    public List<Message> warnings = new LinkedList<Message>();
+   public ErrorListener() {
+   }
 
-    public boolean printToConsole = true;
-    public ErrorListener forwardListener = null;
+   public void setPrintToConsole(boolean flag) {
+      this.printToConsole = flag;
+   }
 
-    public static synchronized ErrorListener getThreadInstance() {
-        if(threadLocalListener.get() == null) {
-            threadLocalListener.set(new ErrorListener());
-        }
-        return threadLocalListener.get();
-    }
+   public void setForwardListener(ErrorListener listener) {
+      this.forwardListener = listener;
+   }
 
-    public ErrorListener() {
+   public void clear() {
+      infos.clear();
+      errors.clear();
+      warnings.clear();
+   }
 
-    }
+   public boolean hasErrors() {
+      return errors.size() > 0;
+   }
 
-    public void setPrintToConsole(boolean flag) {
-        this.printToConsole = flag;
-    }
+   public boolean hasWarnings() {
+      return warnings.size() > 0;
+   }
 
-    public void setForwardListener(ErrorListener listener) {
-        this.forwardListener = listener;
-    }
+   public String getFirstErrorMessage() {
+      if (hasErrors()) {
+         return errors.get(0).toString();
+      } else {
+         return null;
+      }
+   }
 
-    public void clear() {
-        infos.clear();
-        errors.clear();
-        warnings.clear();
-    }
+   public void info(String msg) {
+      infos.add(msg);
+      if (forwardListener != null)
+         forwardListener.info(msg);
+      print(msg, Console.LEVEL_NORMAL);
+   }
 
-    public boolean hasErrors() {
-        return errors.size() > 0;
-    }
+   public void error(Message msg) {
+      errors.add(msg);
+      if (forwardListener != null)
+         forwardListener.error(msg);
+      print(msg.toString(), Console.LEVEL_ERROR);
+   }
 
-    public boolean hasWarnings() {
-        return warnings.size() > 0;
-    }
-    
-    public String getFirstErrorMessage() {
-        if(hasErrors()) {
-            return errors.get(0).toString();
-        } else {
-            return null;
-        }
-    }
+   public void warning(Message msg) {
+      warnings.add(msg);
+      if (forwardListener != null)
+         forwardListener.warning(msg);
+      print(msg.toString(), Console.LEVEL_WARNING);
+   }
 
-    public void info(String msg) {
-        infos.add(msg);
-        if(forwardListener != null)
-            forwardListener.info(msg);
-        print(msg, Console.LEVEL_NORMAL);
-    }
+   public void error(ToolMessage msg) {
+      errors.add(msg);
+      if (forwardListener != null)
+         forwardListener.error(msg);
+      print(msg.toString(), Console.LEVEL_ERROR);
+   }
 
-    public void error(Message msg) {
-        errors.add(msg);
-        if(forwardListener != null)
-            forwardListener.error(msg);
-        print(msg.toString(), Console.LEVEL_ERROR);
-    }
-
-    public void warning(Message msg) {
-        warnings.add(msg);
-        if(forwardListener != null)
-            forwardListener.warning(msg);
-        print(msg.toString(), Console.LEVEL_WARNING);
-    }
-
-    public void error(ToolMessage msg) {
-        errors.add(msg);
-        if(forwardListener != null)
-            forwardListener.error(msg);
-        print(msg.toString(), Console.LEVEL_ERROR);
-    }
-
-    public void print(String msg, int level) {
-        if(!printToConsole)
-            return;
-
-        boolean previousVerbose = DecisionProbe.verbose;
-        DecisionProbe.verbose = false;
-        try {
-            ConsoleHelper.getCurrent().println(msg, level);
-        } catch(Exception e) {
-            e.printStackTrace();
-        }
-        DecisionProbe.verbose = previousVerbose;
-    }
+   public void print(String msg, int level) {
+      if (!printToConsole)
+         return;
+      boolean previousVerbose = DecisionProbe.verbose;
+      DecisionProbe.verbose = false;
+      try {
+         ConsoleHelper.getCurrent().println(msg, level);
+      } catch (Exception e) {
+         e.printStackTrace();
+      }
+      DecisionProbe.verbose = previousVerbose;
+   }
 }

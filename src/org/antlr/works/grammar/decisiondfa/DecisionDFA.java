@@ -1,13 +1,5 @@
 package org.antlr.works.grammar.decisiondfa;
 
-import org.antlr.Tool;
-import org.antlr.analysis.DFA;
-import org.antlr.codegen.CodeGenerator;
-import org.antlr.tool.DOTGenerator;
-import org.antlr.tool.Grammar;
-import org.antlr.works.components.GrammarWindow;
-import org.antlr.works.grammar.GrammarDOTTab;
-
 import java.util.Collections;
 import java.util.List;
 /*
@@ -41,72 +33,73 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
 
+import org.antlr.v4.Tool;
+import org.antlr.v4.codegen.CodeGenerator;
+import org.antlr.v4.runtime.dfa.DFA;
+import org.antlr.v4.tool.DOTGenerator;
+import org.antlr.v4.tool.Grammar;
+import org.antlr.works.components.GrammarWindow;
+import org.antlr.works.grammar.GrammarDOTTab;
+
 public class DecisionDFA extends GrammarDOTTab {
+   protected int line;
+   protected int column;
+   protected int decisionNumber;
 
-    protected int line;
-    protected int column;
+   public DecisionDFA(GrammarWindow window) {
+      super(window);
+   }
 
-    protected int decisionNumber;
+   @Override
+   protected boolean willLaunch() {
+      return checkForCurrentRule();
+   }
 
-    public DecisionDFA(GrammarWindow window) {
-        super(window);
-    }
+   @Override
+   public void willRun() {
+      line = window.getTextEditor().getCurrentLinePosition();
+      column = window.getTextEditor().getCurrentColumnPosition();
+   }
 
-    @Override
-    protected boolean willLaunch() {
-        return checkForCurrentRule();
-    }
+   @Override
+   public String getDOTString() throws Exception {
+      DecisionDFAEngine engine = window.decisionDFAEngine;
+      Grammar g;
+      int adjustedColumn = getDecisionColumn(g = engine.getDiscoveredParserGrammar());
+      if (adjustedColumn == -1)
+         adjustedColumn = getDecisionColumn(g = engine.getDiscoveredLexerGrammar());
+      if (adjustedColumn == -1)
+         throw new Exception("No decision in the current line");
+      CodeGenerator generator = new CodeGenerator(new Tool(), g, (String) g.getOption("language"));
+      DFA dfa = g.getLookaheadDFAFromPositionInFile(line, adjustedColumn);
+      decisionNumber = dfa.getDecisionNumber();
+      DOTGenerator dg = new DOTGenerator(g);
+      g.setCodeGenerator(generator);
+      dg.setArrowheadType("none");
+      dg.setRankdir("LR"); // Left-to-right
+      return dg.getDOT(dfa.startState);
+   }
 
-    @Override
-    public void willRun() {
-        line = window.getTextEditor().getCurrentLinePosition();
-        column = window.getTextEditor().getCurrentColumnPosition();
-    }
+   public int getDecisionColumn(Grammar g) {
+      if (g == null)
+         return -1;
+      List columns = g.getLookaheadDFAColumnsForLineInFile(line);
+      // sort the columns as they appears to be not always in ascending order
+      Collections.sort(columns);
+      int adjustedColumn = -1;
+      for (int index = columns.size() - 1; index >= 0; index--) {
+         Integer match = (Integer) columns.get(index);
+         if (match <= column) {
+            adjustedColumn = match;
+            break;
+         } else if (index == 0)
+            adjustedColumn = match;
+      }
+      return adjustedColumn;
+   }
 
-    @Override
-    public String getDOTString() throws Exception {
-        DecisionDFAEngine engine = window.decisionDFAEngine;
-        Grammar g;
-
-        int adjustedColumn = getDecisionColumn(g = engine.getDiscoveredParserGrammar());
-        if(adjustedColumn == -1)
-            adjustedColumn = getDecisionColumn(g = engine.getDiscoveredLexerGrammar());
-
-        if(adjustedColumn == -1)
-            throw new Exception("No decision in the current line");
-
-        CodeGenerator generator = new CodeGenerator(new Tool(), g,
-                (String) g.getOption("language"));
-
-        DFA dfa = g.getLookaheadDFAFromPositionInFile(line, adjustedColumn);
-        decisionNumber = dfa.getDecisionNumber();
-        DOTGenerator dg = new DOTGenerator(g);
-        g.setCodeGenerator(generator);
-        dg.setArrowheadType("none");
-        dg.setRankdir("LR");    // Left-to-right
-        return dg.getDOT( dfa.startState );
-    }
-
-    public int getDecisionColumn(Grammar g) {
-        if(g == null) return -1;
-        
-        List columns = g.getLookaheadDFAColumnsForLineInFile(line);
-        // sort the columns as they appears to be not always in ascending order
-        Collections.sort(columns);
-        int adjustedColumn = -1;
-        for(int index = columns.size()-1; index >=0; index--) {
-            Integer match = (Integer)columns.get(index);
-            if(match <= column) {
-                adjustedColumn = match;
-                break;
-            } else if(index == 0)
-                adjustedColumn = match;
-        }
-        return adjustedColumn;
-    }
-
-    public String getTabName() {
-        return "Decision "+decisionNumber+" of \""+rule.name+"\"";
-    }
-
+   @Override
+   public String getTabName() {
+      return "Decision " + decisionNumber + " of \"" + rule.name + "\"";
+   }
 }

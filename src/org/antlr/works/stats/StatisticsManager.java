@@ -28,12 +28,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-
 package org.antlr.works.stats;
-
-import org.antlr.runtime.debug.Profiler;
-import org.antlr.runtime.misc.Stats;
-import org.antlr.tool.GrammarReport;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -42,119 +37,114 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.antlr.runtime.debug.Profiler;
+import org.antlr.runtime.misc.Stats;
+import org.antlr.tool.GrammarReport;
+
 public class StatisticsManager {
+   public static final int MAX_REPORTS = 1000;
+   protected String type;
+   protected List<String> rawLines = new ArrayList<String>();
 
-    public static final int MAX_REPORTS = 1000;
+   public StatisticsManager(String type) {
+      this.type = type;
+      load();
+   }
 
-    protected String type;
-    protected List<String> rawLines = new ArrayList<String>();
+   public int getStatsCount() {
+      return rawLines.size();
+   }
 
-    public StatisticsManager(String type) {
-        this.type = type;
-        load();
-    }
-
-    public int getStatsCount() {
-        return rawLines.size();
-    }
-
-    public String getReadableString(int index) {
-        if(index < 0 || index >= rawLines.size())
+   public String getReadableString(int index) {
+      if (index < 0 || index >= rawLines.size())
+         return null;
+      else {
+         String rawLine = rawLines.get(index);
+         if (type.equals(StatisticsReporter.TYPE_GRAMMAR))
+            return GrammarReport.toString(rawLine);
+         else if (type.equals(StatisticsReporter.TYPE_RUNTIME)) {
+            // TJP removed 11/23/10 since we don't use anymore
+            // return Profiler.toString(rawLine);
             return null;
-        else {
-            String rawLine = rawLines.get(index);
-            if(type.equals(StatisticsReporter.TYPE_GRAMMAR))
-                return GrammarReport.toString(rawLine);
-            else if(type.equals(StatisticsReporter.TYPE_RUNTIME)) {
-				// TJP removed 11/23/10 since we don't use anymore
-                //return Profiler.toString(rawLine);
-				return null;
-			}
-            else
-                return StatisticsAW.shared().getReadableString();
-        }
-    }
+         } else
+            return StatisticsAW.shared().getReadableString();
+      }
+   }
 
-    public String getRawString(int index) {
-        if(index < 0 || index >= rawLines.size())
-            return null;
-        else
-            return rawLines.get(index);
-    }
+   public String getRawString(int index) {
+      if (index < 0 || index >= rawLines.size())
+         return null;
+      else
+         return rawLines.get(index);
+   }
 
-    public boolean load() {
-        rawLines.clear();
-        if(type.equals(StatisticsReporter.TYPE_GRAMMAR))
-            return loadGrammar();
-        else if(type.equals(StatisticsReporter.TYPE_RUNTIME))
-            return loadRuntime();
-        else if(type.equals(StatisticsReporter.TYPE_GUI))
-            return loadGUI();
-        else
-            return false;
-    }
+   public boolean load() {
+      rawLines.clear();
+      if (type.equals(StatisticsReporter.TYPE_GRAMMAR))
+         return loadGrammar();
+      else if (type.equals(StatisticsReporter.TYPE_RUNTIME))
+         return loadRuntime();
+      else if (type.equals(StatisticsReporter.TYPE_GUI))
+         return loadGUI();
+      else
+         return false;
+   }
 
-    protected boolean loadGUI() {
-        addRawLine(StatisticsAW.shared().getRawString());
-        return true;
-    }
+   protected boolean loadGUI() {
+      addRawLine(StatisticsAW.shared().getRawString());
+      return true;
+   }
 
-    protected boolean loadGrammar() {
-        return loadFromFile(getAbsoluteFileName(GrammarReport.GRAMMAR_STATS_FILENAME));
-    }
+   protected boolean loadGrammar() {
+      return loadFromFile(getAbsoluteFileName(GrammarReport.GRAMMAR_STATS_FILENAME));
+   }
 
-    protected boolean loadRuntime() {
-        return loadFromFile(getAbsoluteFileName(Profiler.RUNTIME_STATS_FILENAME));
-    }
+   protected boolean loadRuntime() {
+      return loadFromFile(getAbsoluteFileName(Profiler.RUNTIME_STATS_FILENAME));
+   }
 
-    protected boolean loadFromFile(String file) {
-        if(file == null)
-            return false;
+   protected boolean loadFromFile(String file) {
+      if (file == null)
+         return false;
+      File f = new File(file);
+      if (!f.exists())
+         return false;
+      try {
+         BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f)));
+         String line;
+         while ((line = br.readLine()) != null) {
+            addRawLine(line);
+         }
+         br.close();
+      } catch (Exception e) {
+         e.printStackTrace();
+         return false;
+      }
+      return true;
+   }
 
-        File f = new File(file);
-        if(!f.exists())
-            return false;
+   protected void addRawLine(String line) {
+      rawLines.add(line);
+      if (rawLines.size() > MAX_REPORTS)
+         rawLines.remove(0);
+   }
 
-        try {
-            BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(f)));
-            String line;
-            while((line = br.readLine()) != null) {
-                addRawLine(line);
-            }
-            br.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
+   public void reset() {
+      reset(type);
+   }
 
-        return true;
-    }
+   public static void reset(String type) {
+      if (type.equals(StatisticsReporter.TYPE_GRAMMAR)) {
+         String file = getAbsoluteFileName(GrammarReport.GRAMMAR_STATS_FILENAME);
+         new File(file).delete();
+      } else if (type.equals(StatisticsReporter.TYPE_RUNTIME)) {
+         String file = getAbsoluteFileName(Profiler.RUNTIME_STATS_FILENAME);
+         new File(file).delete();
+      } else if (type.equals(StatisticsReporter.TYPE_GUI))
+         StatisticsAW.shared().reset();
+   }
 
-    protected void addRawLine(String line) {
-        rawLines.add(line);
-        if(rawLines.size() > MAX_REPORTS)
-            rawLines.remove(0);
-    }
-
-    public void reset() {
-        reset(type);
-    }
-
-    public static void reset(String type) {
-        if(type.equals(StatisticsReporter.TYPE_GRAMMAR)) {
-            String file = getAbsoluteFileName(GrammarReport.GRAMMAR_STATS_FILENAME);
-            new File(file).delete();
-        } else if(type.equals(StatisticsReporter.TYPE_RUNTIME)) {
-            String file = getAbsoluteFileName(Profiler.RUNTIME_STATS_FILENAME);
-            new File(file).delete();
-        } else if(type.equals(StatisticsReporter.TYPE_GUI))
-            StatisticsAW.shared().reset();
-    }
-
-    public static String getAbsoluteFileName(String filename) {
-        return System.getProperty("user.home")+File.separator+
-                    Stats.ANTLRWORKS_DIR+File.separator+
-                    filename;
-    }
-
+   public static String getAbsoluteFileName(String filename) {
+      return System.getProperty("user.home") + File.separator + Stats.ANTLRWORKS_DIR + File.separator + filename;
+   }
 }

@@ -28,13 +28,42 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-
 package org.antlr.works.interpreter;
 
-import org.antlr.runtime.*;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.StringTokenizer;
+
+import javax.swing.Box;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JTextPane;
+import javax.swing.SwingUtilities;
+import javax.swing.tree.TreeNode;
+
+import org.antlr.runtime.ANTLRStringStream;
+import org.antlr.runtime.CharStream;
+import org.antlr.runtime.CommonTokenStream;
+import org.antlr.runtime.IntStream;
+import org.antlr.runtime.RecognitionException;
+import org.antlr.runtime.Token;
+import org.antlr.runtime.TokenSource;
 import org.antlr.runtime.tree.ParseTree;
-import org.antlr.tool.Grammar;
-import org.antlr.tool.Interpreter;
+import org.antlr.v4.tool.Grammar;
 import org.antlr.works.ate.syntax.misc.ATEToken;
 import org.antlr.works.components.GrammarWindow;
 import org.antlr.works.components.GrammarWindowMenu;
@@ -54,347 +83,324 @@ import org.antlr.xjlib.appkit.gview.GView;
 import org.antlr.xjlib.appkit.swing.XJRollOverButton;
 import org.antlr.xjlib.appkit.utils.XJAlert;
 import org.antlr.xjlib.appkit.utils.XJDialogProgress;
-
-import javax.swing.*;
-import javax.swing.tree.TreeNode;
-import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.StringTokenizer;
+import org.stringtemplate.v4.Interpreter;
 
 public class InterpreterTab extends GrammarWindowTab implements Runnable, AWTreePanelDelegate {
+   public static class FilteringTokenStream extends CommonTokenStream {
+      public FilteringTokenStream(TokenSource src) {
+         super(src);
+      }
 
-	public static class FilteringTokenStream extends CommonTokenStream {
-		public FilteringTokenStream(TokenSource src) { super(src); }
-		Set<Integer> hide = new HashSet<Integer>();
-		protected void sync(int i) {
-			super.sync(i);
-			if ( hide.contains(get(i).getType()) ) get(i).setChannel(Token.HIDDEN_CHANNEL);
-		}
-		public void setTokenTypeChannel(int ttype, int channel) {
-			hide.add(ttype);
-		}
-	}
+      Set<Integer> hide = new HashSet<Integer>();
 
-    protected JPanel panel;
-    protected JSplitPane splitPane;
-    protected JTextPane textPane;
-    protected JScrollPane textScrollPane;
-    protected EditorInterpreterTreeModel treeModel;
-    protected AWTreePanel awTreePanel;
-    protected JComboBox rulesCombo;
-    protected JComboBox eolCombo;
-    protected JLabel tokensToIgnoreLabel;
+      @Override
+      protected void sync(int i) {
+         super.sync(i);
+         if (hide.contains(get(i).getType()))
+            get(i).setChannel(Token.HIDDEN_CHANNEL);
+      }
 
-    protected XJDialogProgress progress;
+      public void setTokenTypeChannel(int ttype, int channel) {
+         hide.add(ttype);
+      }
+   }
 
-    protected String startSymbol = null;
+   protected JPanel panel;
+   protected JSplitPane splitPane;
+   protected JTextPane textPane;
+   protected JScrollPane textScrollPane;
+   protected EditorInterpreterTreeModel treeModel;
+   protected AWTreePanel awTreePanel;
+   protected JComboBox rulesCombo;
+   protected JComboBox eolCombo;
+   protected JLabel tokensToIgnoreLabel;
+   protected XJDialogProgress progress;
+   protected String startSymbol = null;
 
-    public InterpreterTab(GrammarWindow window) {
-        super(window);
-    }
+   public InterpreterTab(GrammarWindow window) {
+      super(window);
+   }
 
-    public void close() {
-        awTreePanel.setDelegate(null);
-    }
+   public void close() {
+      awTreePanel.setDelegate(null);
+   }
 
-    public void awake() {
-        panel = new JPanel(new BorderLayout());
+   public void awake() {
+      panel = new JPanel(new BorderLayout());
+      textPane = new JTextPane();
+      textPane.setBackground(Color.white);
+      textPane.setBorder(null);
+      textPane.setPreferredSize(new Dimension(300, 100));
+      textPane.setFont(new Font(AWPrefs.getEditorFont(), Font.PLAIN, AWPrefs.getEditorFontSize()));
+      TextUtils.createTabs(textPane);
+      TextUtils.setDefaultTextPaneProperties(textPane);
+      textScrollPane = new JScrollPane(textPane);
+      textScrollPane.setWheelScrollingEnabled(true);
+      treeModel = new EditorInterpreterTreeModel();
+      awTreePanel = new AWTreePanel(treeModel);
+      awTreePanel.setDelegate(this);
+      splitPane = new JSplitPane();
+      splitPane.setBorder(null);
+      splitPane.setOrientation(JSplitPane.HORIZONTAL_SPLIT);
+      splitPane.setLeftComponent(textScrollPane);
+      splitPane.setRightComponent(awTreePanel);
+      splitPane.setContinuousLayout(true);
+      splitPane.setOneTouchExpandable(true);
+      panel.add(createControlPanel(), BorderLayout.NORTH);
+      panel.add(splitPane, BorderLayout.CENTER);
+      window.registerUndo(null, textPane);
+   }
 
-        textPane = new JTextPane();
-        textPane.setBackground(Color.white);
-        textPane.setBorder(null);
-        textPane.setPreferredSize(new Dimension(300, 100));
+   public Box createControlPanel() {
+      Toolbar box = Toolbar.createHorizontalToolbar();
+      box.addElement(createRunButton());
+      box.addElement(createRulesPopUp());
+      box.addGroupSeparator();
+      box.addElement(new JLabel("Line Endings:"));
+      box.addElement(createEOLCombo());
+      box.addGroupSeparator();
+      createTokensToIgnoreField(box);
+      return box;
+   }
 
-        textPane.setFont(new Font(AWPrefs.getEditorFont(), Font.PLAIN, AWPrefs.getEditorFontSize()));
-        TextUtils.createTabs(textPane);
-        TextUtils.setDefaultTextPaneProperties(textPane);
-
-        textScrollPane = new JScrollPane(textPane);
-        textScrollPane.setWheelScrollingEnabled(true);
-
-        treeModel = new EditorInterpreterTreeModel();
-        awTreePanel = new AWTreePanel(treeModel);
-        awTreePanel.setDelegate(this);
-
-        splitPane = new JSplitPane();
-        splitPane.setBorder(null);
-        splitPane.setOrientation(JSplitPane.HORIZONTAL_SPLIT);
-        splitPane.setLeftComponent(textScrollPane);
-        splitPane.setRightComponent(awTreePanel);
-        splitPane.setContinuousLayout(true);
-        splitPane.setOneTouchExpandable(true);
-        
-        panel.add(createControlPanel(), BorderLayout.NORTH);
-        panel.add(splitPane, BorderLayout.CENTER);
-
-        window.registerUndo(null, textPane);
-    }
-
-    public Box createControlPanel() {
-        Toolbar box = Toolbar.createHorizontalToolbar();
-        box.addElement(createRunButton());
-        box.addElement(createRulesPopUp());
-        box.addGroupSeparator();
-        box.addElement(new JLabel("Line Endings:"));
-        box.addElement(createEOLCombo());
-        box.addGroupSeparator();
-        createTokensToIgnoreField(box);
-        return box;
-    }
-
-    public JButton createRunButton() {
-        JButton button = XJRollOverButton.createMediumButton(IconManager.shared().getIconRun());
-        button.setToolTipText("Run");
-        button.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent event) {
-                if(AWPrefs.isAlertInterpreterLimitation()) {
-                    XJAlert alert = XJAlert.createInstance();
-                    alert.setDisplayDoNotShowAgainButton(true);
-                    alert.showSimple(getContainer(), "Warning", "The interpreterTab does not run actions nor evaluate syntactic predicates." +
-                            "\nUse the debugger if you want to use these ANTLR features.");
-                    AWPrefs.setAlertInterpreterLimitation(!alert.isDoNotShowAgain());
-                }
-                StatisticsAW.shared().recordEvent(StatisticsAW.EVENT_INTERPRETER_BUTTON);
-                interpret();
+   public JButton createRunButton() {
+      JButton button = XJRollOverButton.createMediumButton(IconManager.shared().getIconRun());
+      button.setToolTipText("Run");
+      button.addActionListener(new ActionListener() {
+         @Override
+         public void actionPerformed(ActionEvent event) {
+            if (AWPrefs.isAlertInterpreterLimitation()) {
+               XJAlert alert = XJAlert.createInstance();
+               alert.setDisplayDoNotShowAgainButton(true);
+               alert.showSimple(getContainer(), "Warning",
+                     "The interpreterTab does not run actions nor evaluate syntactic predicates." + "\nUse the debugger if you want to use these ANTLR features.");
+               AWPrefs.setAlertInterpreterLimitation(!alert.isDoNotShowAgain());
             }
-        });
-        return button;
-    }
+            StatisticsAW.shared().recordEvent(StatisticsAW.EVENT_INTERPRETER_BUTTON);
+            interpret();
+         }
+      });
+      return button;
+   }
 
-    public JComboBox createRulesPopUp() {
-        rulesCombo = new JComboBox();
-        rulesCombo.setFocusable(false);
-        rulesCombo.setMaximumSize(new Dimension(Short.MAX_VALUE, rulesCombo.getPreferredSize().height));
-        rulesCombo.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent event) {
-                String rule = (String)rulesCombo.getSelectedItem();
-                if(rule != null)
-                    startSymbol = rule;
+   public JComboBox createRulesPopUp() {
+      rulesCombo = new JComboBox();
+      rulesCombo.setFocusable(false);
+      rulesCombo.setMaximumSize(new Dimension(Short.MAX_VALUE, rulesCombo.getPreferredSize().height));
+      rulesCombo.addActionListener(new ActionListener() {
+         @Override
+         public void actionPerformed(ActionEvent event) {
+            String rule = (String) rulesCombo.getSelectedItem();
+            if (rule != null)
+               startSymbol = rule;
+         }
+      });
+      return rulesCombo;
+   }
+
+   public JComboBox createEOLCombo() {
+      eolCombo = new JComboBox();
+      eolCombo.setFocusable(false);
+      eolCombo.setMaximumSize(new Dimension(Short.MAX_VALUE, eolCombo.getPreferredSize().height));
+      Utils.fillComboWithEOL(eolCombo);
+      return eolCombo;
+   }
+
+   public Box createTokensToIgnoreField(Toolbar box) {
+      box.addElement(new JLabel("Ignore rules:"));
+      tokensToIgnoreLabel = new JLabel();
+      tokensToIgnoreLabel.setFont(tokensToIgnoreLabel.getFont().deriveFont(Font.ITALIC));
+      box.addElement(tokensToIgnoreLabel);
+      JButton button = new JButton("Guess");
+      button.setFocusable(false);
+      button.setToolTipText("Find the name of all rules containing an action with channel=99");
+      button.addActionListener(new ActionListener() {
+         @Override
+         public void actionPerformed(ActionEvent event) {
+            window.findTokensToIgnore(true);
+         }
+      });
+      box.add(Box.createHorizontalGlue());
+      box.addElement(button);
+      return box;
+   }
+
+   public Container getContainer() {
+      return panel;
+   }
+
+   public void setRules(List<ElementRule> rules) {
+      updateRulesCombo(rules);
+      updateIgnoreTokens(rules);
+   }
+
+   public void updateRulesCombo(List<ElementRule> rules) {
+      Object selectedItem = rulesCombo.getSelectedItem();
+      rulesCombo.removeAllItems();
+      if (rules != null) {
+         for (ElementRule rule : rules) {
+            rulesCombo.addItem(rule.toString());
+         }
+      }
+      if (selectedItem != null)
+         rulesCombo.setSelectedItem(selectedItem);
+   }
+
+   public void updateIgnoreTokens(List<ElementRule> rules) {
+      StringBuilder sb = new StringBuilder();
+      if (rules != null) {
+         for (ElementRule r : rules) {
+            if (r.ignored) {
+               if (sb.length() > 0)
+                  sb.append(" ");
+               sb.append(r.name);
             }
-        });
-        return rulesCombo;
-    }
+         }
+      }
+      if (sb.length() == 0)
+         tokensToIgnoreLabel.setText("-");
+      else
+         tokensToIgnoreLabel.setText(sb.toString());
+   }
 
-    public JComboBox createEOLCombo() {
-        eolCombo = new JComboBox();
-        eolCombo.setFocusable(false);
-        eolCombo.setMaximumSize(new Dimension(Short.MAX_VALUE, eolCombo.getPreferredSize().height));
-        Utils.fillComboWithEOL(eolCombo);
-        return eolCombo;
-    }
+   public void interpret() {
+      window.consoleTab.makeCurrent();
+      if (progress == null)
+         progress = new XJDialogProgress(window);
+      progress.setInfo("Interpreting...");
+      // AW-42: guess always before running the interpreterTab
+      window.findTokensToIgnore(false);
+      progress.setCancellable(false);
+      progress.setIndeterminate(true);
+      progress.display();
+      new Thread(this).start();
+   }
 
-    public Box createTokensToIgnoreField(Toolbar box) {
-        box.addElement(new JLabel("Ignore rules:"));
+   @Override
+   public void run() {
+      try {
+         window.getGrammarEngine().analyze();
+         process();
+      } catch (Exception e) {
+         window.consoleTab.println(e);
+      } finally {
+         runEnded();
+      }
+   }
 
-        tokensToIgnoreLabel = new JLabel();
-        tokensToIgnoreLabel.setFont(tokensToIgnoreLabel.getFont().deriveFont(Font.ITALIC));
-        box.addElement(tokensToIgnoreLabel);
+   public void runEnded() {
+      SwingUtilities.invokeLater(new Runnable() {
+         @Override
+         public void run() {
+            progress.close();
+         }
+      });
+   }
 
-        JButton button = new JButton("Guess");
-        button.setFocusable(false);
-        button.setToolTipText("Find the name of all rules containing an action with channel=99");
-        button.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent event) {
-                window.findTokensToIgnore(true);
-            }
-        });
-        box.add(Box.createHorizontalGlue());
-        box.addElement(button);
+   protected void process() {
+      progress.setInfo("Interpreting...");
+      window.consoleTab.println("Interpreting...");
+      CharStream input = new ANTLRStringStream(Utils.convertRawTextWithEOL(textPane.getText(), eolCombo));
+      ANTLRGrammarEngine eg = window.getGrammarEngine().getANTLRGrammarEngine();
+      try {
+         eg.createGrammars();
+      } catch (Exception e) {
+         window.consoleTab.println(e);
+         return;
+      }
+      Grammar parser = eg.getParserGrammar();
+      Grammar lexer = eg.getLexerGrammar();
+      if (lexer == null) {
+         throw new RuntimeException("Lexer is null. Check the grammar before running the interpreterTab.");
+      }
+      Interpreter lexEngine = new CustomInterpreter(lexer, input);
+      FilteringTokenStream tokens = new FilteringTokenStream(lexEngine);
+      StringTokenizer tk = new StringTokenizer(tokensToIgnoreLabel.getText(), " ");
+      while (tk.hasMoreTokens()) {
+         String tokenName = tk.nextToken();
+         tokens.setTokenTypeChannel(lexer.getTokenType(tokenName), Token.HIDDEN_CHANNEL);
+      }
+      Interpreter parseEngine = new CustomInterpreter(parser, tokens);
+      ParseTree t = null;
+      try {
+         if (ATEToken.isLexerName(startSymbol)) {
+            t = lexEngine.parse(startSymbol);
+         } else {
+            t = parseEngine.parse(startSymbol);
+         }
+      } catch (Exception e) {
+         window.consoleTab.println(e);
+      }
+      if (parser != null && t != null) {
+         SwingUtilities.invokeLater(new Refresh(parser, t));
+      }
+   }
 
-        return box;
-    }
+   public class CustomInterpreter extends Interpreter {
+      public CustomInterpreter(Grammar grammar, IntStream input) {
+         super(grammar, input);
+      }
 
-    public Container getContainer() {
-        return panel;
-    }
+      @Override
+      public void reportScanError(RecognitionException re) {
+         CharStream cs = (CharStream) input;
+         window.consoleTab.println("problem matching token at " + cs.getLine() + ":" + cs.getCharPositionInLine() + " " + re);
+      }
+   }
 
-    public void setRules(List<ElementRule> rules) {
-        updateRulesCombo(rules);
-        updateIgnoreTokens(rules);
-    }
+   public class Refresh implements Runnable {
+      Grammar g;
+      ParseTree t;
 
-    public void updateRulesCombo(List<ElementRule> rules) {
-        Object selectedItem =  rulesCombo.getSelectedItem();
+      public Refresh(Grammar grammar, ParseTree t) {
+         this.g = grammar;
+         this.t = t;
+      }
 
-        rulesCombo.removeAllItems();
-        if(rules != null) {
-            for (ElementRule rule : rules) {
-                rulesCombo.addItem(rule.toString());
-            }
-        }
+      @Override
+      public void run() {
+         treeModel.setGrammar(g);
+         treeModel.setTree(t);
+         awTreePanel.setRoot((TreeNode) treeModel.getRoot());
+         awTreePanel.refresh();
+      }
+   }
 
-        if(selectedItem != null)
-            rulesCombo.setSelectedItem(selectedItem);
-    }
+   @Override
+   public boolean canExportToBitmap() {
+      return true;
+   }
 
-    public void updateIgnoreTokens(List<ElementRule> rules) {
-        StringBuilder sb = new StringBuilder();
-        if(rules != null) {
-            for (ElementRule r : rules) {
-                if (r.ignored) {
-                    if (sb.length() > 0)
-                        sb.append(" ");
-                    sb.append(r.name);
-                }
-            }
-        }
-        if(sb.length() == 0)
-            tokensToIgnoreLabel.setText("-");
-        else
-            tokensToIgnoreLabel.setText(sb.toString());
-    }
+   @Override
+   public boolean canExportToEPS() {
+      return true;
+   }
 
-    public void interpret() {
-        window.consoleTab.makeCurrent();
+   @Override
+   public GView getExportableGView() {
+      return awTreePanel.getGraphView();
+   }
 
-        if(progress == null)
-            progress = new XJDialogProgress(window);
+   @Override
+   public String getTabName() {
+      return "Interpreter";
+   }
 
-        progress.setInfo("Interpreting...");
+   @Override
+   public Component getTabComponent() {
+      return getContainer();
+   }
 
-        // AW-42: guess always before running the interpreterTab
-        window.findTokensToIgnore(false);
+   @Override
+   public void awTreeDidSelectTreeNode(TreeNode node, boolean shiftKey) {
+      // not implemented
+   }
 
-        progress.setCancellable(false);
-        progress.setIndeterminate(true);
-        progress.display();
-
-        new Thread(this).start();
-    }
-
-    public void run() {
-        try {
-            window.getGrammarEngine().analyze();
-            process();
-        } catch(Exception e) {
-            window.consoleTab.println(e);
-        } finally {
-            runEnded();
-        }
-    }
-
-    public void runEnded() {
-        SwingUtilities.invokeLater(new Runnable() {
-            public void run() {
-                progress.close();
-            }
-        });
-    }
-
-    protected void process() {
-        progress.setInfo("Interpreting...");
-        window.consoleTab.println("Interpreting...");
-
-        CharStream input = new ANTLRStringStream(Utils.convertRawTextWithEOL(textPane.getText(), eolCombo));
-
-        ANTLRGrammarEngine eg = window.getGrammarEngine().getANTLRGrammarEngine();
-        try {
-            eg.createGrammars();
-        } catch (Exception e) {
-            window.consoleTab.println(e);
-            return;
-        }
-
-        Grammar parser = eg.getParserGrammar();
-        Grammar lexer = eg.getLexerGrammar();
-        if(lexer == null) {
-            throw new RuntimeException("Lexer is null. Check the grammar before running the interpreterTab.");
-        }
-
-        Interpreter lexEngine = new CustomInterpreter(lexer, input);
-
-
-        FilteringTokenStream tokens = new FilteringTokenStream(lexEngine);
-
-        StringTokenizer tk = new StringTokenizer(tokensToIgnoreLabel.getText(), " ");
-        while ( tk.hasMoreTokens() ) {
-            String tokenName = tk.nextToken();
-            tokens.setTokenTypeChannel(lexer.getTokenType(tokenName), Token.HIDDEN_CHANNEL);
-        }
-
-        Interpreter parseEngine = new CustomInterpreter(parser, tokens);
-
-        ParseTree t = null;
-        try {
-            if(ATEToken.isLexerName(startSymbol)) {
-                t = lexEngine.parse(startSymbol);
-            } else {
-                t = parseEngine.parse(startSymbol);
-            }
-        } catch (Exception e) {
-            window.consoleTab.println(e);
-        }
-
-        if(parser != null && t != null) {
-            SwingUtilities.invokeLater(new Refresh(parser, t));
-        }
-    }
-
-    public class CustomInterpreter extends Interpreter {
-
-        public CustomInterpreter(Grammar grammar, IntStream input) {
-            super(grammar, input);
-        }
-
-        @Override
-        public void reportScanError(RecognitionException re) {
-            CharStream cs = (CharStream)input;
-            window.consoleTab.println("problem matching token at "+
-                cs.getLine()+":"+cs.getCharPositionInLine()+" "+re);
-        }
-    }
-
-    public class Refresh implements Runnable {
-        Grammar g;
-        ParseTree t;
-
-        public Refresh(Grammar grammar, ParseTree t) {
-            this.g = grammar;
-            this.t = t;
-        }
-
-        public void run() {
-            treeModel.setGrammar(g);
-            treeModel.setTree(t);
-
-            awTreePanel.setRoot((TreeNode)treeModel.getRoot());
-            awTreePanel.refresh();
-        }
-    }
-
-    public boolean canExportToBitmap() {
-        return true;
-    }
-
-    public boolean canExportToEPS() {
-        return true;
-    }
-
-    public GView getExportableGView() {
-        return awTreePanel.getGraphView();
-    }
-
-    public String getTabName() {
-        return "Interpreter";
-    }
-
-    public Component getTabComponent() {
-        return getContainer();
-    }
-
-    public void awTreeDidSelectTreeNode(TreeNode node, boolean shiftKey) {
-        // not implemented
-    }
-
-    public JPopupMenu awTreeGetContextualMenu() {
-        ContextualMenuFactory factory = window.createContextualMenuFactory();
-        factory.addItem(GrammarWindowMenu.MI_EXPORT_AS_EPS);
-        factory.addItem(GrammarWindowMenu.MI_EXPORT_AS_IMAGE);
-        return factory.menu;
-    }
-
+   @Override
+   public JPopupMenu awTreeGetContextualMenu() {
+      ContextualMenuFactory factory = window.createContextualMenuFactory();
+      factory.addItem(GrammarWindowMenu.MI_EXPORT_AS_EPS);
+      factory.addItem(GrammarWindowMenu.MI_EXPORT_AS_IMAGE);
+      return factory.menu;
+   }
 }

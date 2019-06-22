@@ -28,84 +28,76 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
-
 package org.antlr.works.grammar.antlr;
-
-import org.antlr.analysis.NFAState;
-import org.antlr.tool.Message;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import org.antlr.analysis.NFAState;
+import org.antlr.tool.Message;
+
 public class GrammarError {
+   /** Array of array of NFAState states */
+   public List<List> paths = new ArrayList<List>();
+   /** Array describing which path is disabled */
+   public List<Boolean> pathsDisabled = new ArrayList<Boolean>();
+   /** Array of array of NFAState states */
+   public List<Object[]> unreachableAlts = new ArrayList<Object[]>();
+   /** Array of rules concerned by the error */
+   public List<String> rules = new ArrayList<String>();
+   /** Array of states concerned by the error */
+   public List states = new ArrayList();
+   public List labels;
+   public int line;
+   public String messageText;
+   public Message message;
 
-    /** Array of array of NFAState states */
-    public List<List> paths = new ArrayList<List>();
+   public GrammarError() {
+   }
 
-    /** Array describing which path is disabled */
-    public List<Boolean> pathsDisabled = new ArrayList<Boolean>();
+   public void addPath(List path, boolean disabled) {
+      this.paths.add(path);
+      this.pathsDisabled.add(disabled);
+   }
 
-    /** Array of array of NFAState states */
-    public List<Object[]> unreachableAlts = new ArrayList<Object[]>();
+   public void addUnreachableAlt(NFAState state, Integer alt) {
+      this.unreachableAlts.add(new Object[] { state, alt });
+   }
 
-    /** Array of rules concerned by the error */
-    public List<String> rules = new ArrayList<String>();
+   public void addRule(String rule) {
+      if (!rules.contains(rule))
+         rules.add(rule);
+   }
 
-    /** Array of states concerned by the error */
-    public List states = new ArrayList();
+   public void addStates(NFAState state) {
+      this.states.add(state);
+   }
 
-    public List labels;
+   public void addStates(List states) {
+      this.states.addAll(states);
+   }
 
-    public int line;
-    public String messageText;
-    public Message message;
+   public void setLine(int line) {
+      this.line = line;
+   }
 
-    public GrammarError() {
-    }
+   public void setMessageText(String messageText) {
+      this.messageText = messageText;
+   }
 
-    public void addPath(List path, boolean disabled) {
-        this.paths.add(path);
-        this.pathsDisabled.add(disabled);
-    }
+   public void setMessage(Message message) {
+      this.message = message;
+   }
 
-    public void addUnreachableAlt(NFAState state, Integer alt) {
-        this.unreachableAlts.add(new Object[] { state, alt});
-    }
+   public Message getMessage() {
+      return message;
+   }
 
-    public void addRule(String rule) {
-        if(!rules.contains(rule))
-            rules.add(rule);
-    }
+   public void setLabels(List labels) {
+      this.labels = labels;
+   }
 
-    public void addStates(NFAState state) {
-        this.states.add(state);
-    }
-
-    public void addStates(List states) {
-        this.states.addAll(states);
-    }
-
-    public void setLine(int line) {
-        this.line = line;
-    }
-
-    public void setMessageText(String messageText) {
-        this.messageText = messageText;
-    }
-
-    public void setMessage(Message message) {
-        this.message = message;
-    }
-
-    public Message getMessage() {
-        return message;
-    }
-    
-    public void setLabels(List labels) {
-        this.labels = labels;
-    }
-
-    public List getLabels() {
-        return labels;
-    }
+   public List getLabels() {
+      return labels;
+   }
 }

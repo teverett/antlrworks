@@ -10,7 +10,7 @@
     <property name="src.dist.dir" value="${dist.dir}/src" />
     <property name="osx.dir" value="${basedir}/osx" />
     <property name="osx.build.dir" value="${build.dir}/osx" />
-
+ 
     <property name="jar.file" value="${dist.dir}/antlrworks-${version}.jar" />
 
     <path id="classpath">
@@ -34,8 +34,8 @@
         <mkdir dir="${build.dir}"/>
         <javac
                 destdir="${build.dir}"
-                source="1.5"
-                target="1.5"
+                source="${source.jvm}"
+                target="${target.jvm}"
                 debug="true"
                 excludes="org/antlr/works/test/**">
             <classpath refid="classpath"/>
@@ -47,8 +47,8 @@
         <mkdir dir="${build.dir}"/>
         <javac
                 destdir="${build.dir}"
-                source="1.5"
-                target="1.5"
+                source="${source.jvm}"
+                target="${target.jvm}"
                 debug="true"
                 excludes="org/antlr/works/test/**, **/XJApplicationMacOS.java">
             <classpath refid="classpath"/>
